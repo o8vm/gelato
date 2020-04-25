@@ -5,6 +5,10 @@ extern crate tokio;
 use irc::client::prelude::*;
 use futures::prelude::*;
 
+pub struct Connection {
+  config: Config,
+  client: Client,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), failure::Error> {
