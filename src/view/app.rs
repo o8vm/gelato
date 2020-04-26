@@ -2,11 +2,13 @@ extern crate futures;
 extern crate tokio;
 
 use iced::{
-  text_input, Align, Application, Column, Command, Container,
+  text_input, Align, Application, Column, Command, Container, Subscription,
   Element, Length, Settings, Text, //TextInput,PaneGrid, pane_grid, Background, container,
 };
 use serde::{Deserialize, Serialize};
 use super::util;
+
+use std::time::{Duration, Instant};
 
 // 本当は要らない
 pub fn main() {
@@ -14,15 +16,28 @@ pub fn main() {
 }
 
 // アプリケーションの状態管理
-#[derive(Debug, Default)]
 pub struct State {
   input: text_input::State,
   input_value: String,
   display_value: String,
   saving: bool,
   dirty: bool,
-  panes: usize,
-  panes_created: usize,
+  duration: Duration,
+  last_tick: Instant,
+}
+
+impl Default for State {
+  fn default() -> Self {
+    Self {
+      input: text_input::State::new(),
+      input_value: String::from(""),
+      display_value: String::from(""),
+      saving: true,
+      dirty: true,
+      duration: Duration::default(),
+      last_tick: std::time::Instant::now(),
+    }
+  }
 }
 
 // 読み込み済み、保存済み、入力変化した
@@ -31,6 +46,7 @@ pub enum Message {
     Loaded(Result<SavedState, LoadError>),
     Saved(Result<(), SaveError>),
     InputChanged(String),
+    Tick(Instant),
 }
 
 // 状態の内、保存する情報のモデル
@@ -121,37 +137,93 @@ impl Application for App {
           Message::Saved(_) => {
             state.saving = false;
             saved = true;
-          }
+          },
+          Message::Tick(now) => {
+            let last_tick = &state.last_tick;
+            state.duration += now - *last_tick;
+            state.last_tick = now;
+          },
           _ => {}
       }
-      if !saved {
-        state.dirty = true;
-      }
-
-    if state.dirty && !state.saving {
-        state.dirty = false;
-        state.saving = true;
-        Command::perform(
-          SavedState {
+        if !saved {
+          state.dirty = true;
+        }
+        if state.dirty && !state.saving {
+          state.dirty = false;
+          state.saving = true;
+          Command::perform(
+            SavedState {
               input_value: state.input_value.clone(),
               display_value: state.display_value.clone()
-          }
-          .save(),
-          Message::Saved,
-        )
-      } else {
-        Command::none()
+            }.save(),
+            Message::Saved,
+          )
+        } else {
+          Command::none()
+        }
       }
     }
+  }
+  // サブスクリプションの登録
+  fn subscription(&self) -> Subscription<Message> {
+    match self {
+      App::Loaded(State {display_value, ..}) => {
+        time::every(Duration::from_millis(10)).map(Message::Tick)
+        //Subscription::none()
+      },
+      _ => {
+        Subscription::none()
+      }
   }
 }
   // アプリケーションの表示を操作
    fn view(&mut self) -> Element<Self::Message> {
     match self {
       App::Loading => util::loading_message(),
-      App::Loaded(State {
-        display_value, ..
-      }) => util::show_display_val(&display_value),
+      App::Loaded(State{
+        display_value,
+        duration,
+        ..
+      }) => util::show_display_val(&display_value, &duration),
     }
+  }
+}
+
+// https://github.com/hecrj/iced/tree/master/examples/stopwatch
+// stopwatchを移植してみた
+mod time {
+  use iced::futures;
+
+  pub fn every(
+      duration: std::time::Duration,
+  ) -> iced::Subscription<std::time::Instant> {
+      iced::Subscription::from_recipe(Every(duration))
+  }
+
+  struct Every(std::time::Duration);
+
+  impl<H, I> iced_native::subscription::Recipe<H, I> for Every
+  where
+      H: std::hash::Hasher,
+  {
+      type Output = std::time::Instant;
+
+      fn hash(&self, state: &mut H) {
+          use std::hash::Hash;
+
+          std::any::TypeId::of::<Self>().hash(state);
+          self.0.hash(state);
+      }
+
+      fn stream(
+          self: Box<Self>,
+          _input: futures::stream::BoxStream<'static, I>,
+      ) -> futures::stream::BoxStream<'static, Self::Output> {
+          use futures::stream::StreamExt;
+
+          async_std::stream::interval(self.0)
+              .map(|_| std::time::Instant::now())
+              .boxed()
+      }
   }
 }
