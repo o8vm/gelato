@@ -6,6 +6,7 @@ authors = ["Yuri Yamamoto (lilybrevec) <allabrevec@gmail.com>"]
 keywords = ["irc", "client", "gui"]
 repository = "https://github.com/lilybrevec/gelato"
 readme = "README.md"
+license = "MIT"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
