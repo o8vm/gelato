@@ -21,7 +21,7 @@ pub fn show_display_val(dvalue: &String, duration: &Duration) -> Element<'static
       .spacing(20)
       .max_width(500)
       .align_items(Align::Start)
-      .push(Text::new("lilybrevec:"))
+      .push(Text::new("test:"))
       .push(duration)
       .push(Text::new(dvalue));
   Container::new(content)
