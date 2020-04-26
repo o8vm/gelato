@@ -193,6 +193,7 @@ impl Application for App {
 // stopwatchを移植してみた
 mod time {
   use iced::futures;
+  use futures::stream::Stream;
   extern crate irc;
   use irc::client::prelude::*;
   use irc::client::ClientStream;
@@ -212,7 +213,7 @@ mod time {
   }
 
   struct Every(std::time::Duration);
-
+  // https://docs.rs/iced_native/0.2.1/iced_native/subscription/trait.Recipe.html
   impl<H, I> iced_native::subscription::Recipe<H, I> for Every
   where
       H: std::hash::Hasher,
@@ -229,9 +230,11 @@ mod time {
           self: Box<Self>,
           _input: futures::stream::BoxStream<'static, I>,
       ) -> futures::stream::BoxStream<'static, Self::Output> {
-          use futures::stream::StreamExt;
+          use futures::stream::{StreamExt, Stream};
+          use futures::prelude::*;
           let cstream = client_setting();
-          // あと少し?
+          // give up ...
+          //let a = cstream.map(|m| {let Some(k) = m; k});
           async_std::stream::interval(self.0)
               .map(|_| std::time::Instant::now())
               .boxed()

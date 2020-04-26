@@ -15,6 +15,7 @@ async fn main() -> Result<(), failure::Error> {
   client.identify()?;
   let mut stream = client.stream()?;
   let appcc = App::run(Settings::default());
+  // transpose https://doc.rust-lang.org/std/result/enum.Result.html
   while let Some(message) = stream.next().await.transpose()? {
       print!("{}", message);
   }
