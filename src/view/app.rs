@@ -10,6 +10,7 @@ use super::util;
 
 use std::time::{Duration, Instant};
 
+
 // 本当は要らない
 pub fn main() {
   App::run(Settings::default())
@@ -72,7 +73,6 @@ impl SavedState {
     Ok(())
   }
 }
-
 
 #[derive(Debug, Clone)]
 pub enum LoadError {
@@ -193,6 +193,17 @@ impl Application for App {
 // stopwatchを移植してみた
 mod time {
   use iced::futures;
+  extern crate irc;
+  use irc::client::prelude::*;
+  use irc::client::ClientStream;
+
+  pub async fn client_setting () -> Result<ClientStream, failure::Error> {
+    let config = Config::load("config.toml").unwrap();
+    let mut client = Client::from_config(config).await?;
+    client.identify()?;
+    let mut stream = client.stream()?;
+    Ok(stream)
+  }
 
   pub fn every(
       duration: std::time::Duration,
@@ -207,7 +218,6 @@ mod time {
       H: std::hash::Hasher,
   {
       type Output = std::time::Instant;
-
       fn hash(&self, state: &mut H) {
           use std::hash::Hash;
 
@@ -220,10 +230,12 @@ mod time {
           _input: futures::stream::BoxStream<'static, I>,
       ) -> futures::stream::BoxStream<'static, Self::Output> {
           use futures::stream::StreamExt;
-
+          let cstream = client_setting();
+          // あと少し?
           async_std::stream::interval(self.0)
               .map(|_| std::time::Instant::now())
               .boxed()
       }
   }
 }
+
