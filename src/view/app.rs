@@ -2,22 +2,12 @@ extern crate futures;
 extern crate tokio;
 
 use super::download;
+use super::message::*;
 use super::time;
 use super::util;
 use iced::{
-  button,
-  text_input,
-  Align,
-  Application,
-  Button,
-  Column,
-  Command,
-  Container,
-  Element,
-  Length,
-  Settings,
-  Subscription,
-  Text, //TextInput,PaneGrid, pane_grid, Background, container,
+  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length,
+  ProgressBar, Settings, Subscription, Text,
 };
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -56,22 +46,24 @@ impl Default for State {
   }
 }
 
-// 読み込み済み、保存済み、入力変化した イベントの状態
-#[derive(Debug, Clone)]
-pub enum Message {
-  Loaded(Result<SavedState, LoadError>),
-  Saved(Result<(), SaveError>),
-  InputChanged(String),
-  Tick(Instant),
-  Download,
-  DownloadProgressed(download::Progress),
+impl State {
+  pub fn new_display_val(s: String) -> Self {
+    let mut default: State = State::default();
+    default.display_value = String::from(s.to_string());
+    default
+  }
+  pub fn new_progress(v: f32) -> Self {
+    let mut default: State = State::default();
+    default.progress = v;
+    default
+  }
 }
 
 // 状態の内、保存する情報のモデル
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedState {
-  input_value: String,
-  display_value: String,
+  pub input_value: String,
+  pub display_value: String,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -110,6 +102,8 @@ pub enum SaveError {
 pub enum App {
   Loading,
   Loaded(State),
+  Downloading(State),
+  Downloaded(State),
 }
 
 impl Application for App {
@@ -133,48 +127,27 @@ impl Application for App {
   // アプリケーションの更新
   fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
     match self {
-      App::Loading => {
-        match message {
-          Message::Loaded(Ok(state)) => {
-            *self = App::Loaded(State {
-              display_value: state.display_value,
-              ..State::default()
-            });
-          }
-          Message::Loaded(Err(_)) => {
-            *self = App::Loaded(State::default());
-          }
-          _ => {}
-        }
-        Command::none()
-      }
+      App::Loading => app_loading_command(self, message),
       App::Loaded(state) => {
         let mut saved = false;
+        let mut download = false;
         match message {
           Message::Saved(_) => {
             state.saving = false;
             saved = true;
+          }
+          Message::Download => {
+            println!("update Message::Download");
+            download = true;
           }
           Message::Tick(now) => {
             let last_tick = &state.last_tick;
             state.duration += now - *last_tick;
             state.last_tick = now;
           }
-          Message::Download => match self {
-            _ => {}
-          },
-          Message::DownloadProgressed(message) => match message {
-            download::Progress::Started => {
-              state.progress = 0.0;
-            }
-            download::Progress::Advanced(percentage) => {
-              state.progress = percentage;
-            }
-            download::Progress::Finished => {}
-            download::Progress::Errored => {}
-          },
           _ => {}
         }
+
         if !saved {
           state.dirty = true;
         }
@@ -189,27 +162,85 @@ impl Application for App {
             .save(),
             Message::Saved,
           )
+        } else if download {
+          println!("Here 0");
+          let mut state_edit = State::default();
+          state_edit.progress = 0.0;
+          *self = App::Downloading(state_edit);
+          println!("Here 1");
+          Command::none()
         } else {
           Command::none()
         }
       }
+      App::Downloading(state) => {
+        let mut download_done = false;
+        match message {
+          Message::DownloadProgressed(dmessage) => match dmessage {
+            download::Progress::Started => {
+              println!("update Message::DownloadProgressed Started");
+              state.progress = 0.0;
+            }
+            download::Progress::Advanced(percentage) => {
+              println!("update Message::DownloadProgressed advanced");
+              state.progress = percentage;
+            }
+            download::Progress::Finished => {
+              println!("update Message::DownloadProgressed finished");
+              download_done = true;
+            }
+            download::Progress::Errored => {
+              println!("update Message::DownloadProgressed errored");
+              download_done = true;
+            }
+          },
+          _ => {}
+        }
+        if download_done {
+          *self = App::Downloaded(State::default());
+          Command::none()
+        } else {
+          Command::none()
+        }
+      }
+      _ => Command::none(),
     }
   }
   // サブスクリプションの登録
   fn subscription(&self) -> Subscription<Message> {
     match self {
-      App::Loaded(State { display_value, .. }) => {
-        time::every(Duration::from_millis(10)).map(Message::Tick)
-        //Subscription::none()
+      App::Loaded(State { .. }) => time::every(Duration::from_millis(10)).map(Message::Tick),
+      App::Downloading { .. } => {
+        println!("subscription begin");
+        download::file("https://twitter.com/stangeltties/status/1256883350440034310/photo/1")
+          .map(Message::DownloadProgressed)
       }
       _ => Subscription::none(),
     }
   }
   // アプリケーションの表示を操作
   fn view(&mut self) -> Element<Self::Message> {
+    let current_progress = match self {
+      App::Downloading(State { progress, .. }) => *progress,
+      App::Downloaded { .. } => 100.0,
+      _ => 0.0,
+    };
+    let progress_bar = ProgressBar::new(0.0..=100.0, current_progress);
     match self {
       App::Loading => util::loading_message(),
       App::Loaded(State {
+        display_value,
+        duration,
+        button,
+        ..
+      })
+      | App::Downloaded(State {
+        display_value,
+        duration,
+        button,
+        ..
+      })
+      | App::Downloading(State {
         display_value,
         duration,
         button,
@@ -238,12 +269,17 @@ impl Application for App {
           .push(Text::new("test:"))
           .push(duration)
           .push(Text::new(display_value.to_string()))
-          .push(control);
+          .push(control)
+          .push(progress_bar);
         Container::new(content)
           .width(Length::FillPortion(2))
           .height(Length::Fill)
           .into()
       }
+      _ => Container::new(Column::new())
+        .width(Length::FillPortion(2))
+        .height(Length::Fill)
+        .into(),
     }
   }
 }

@@ -1,7 +1,7 @@
 use iced::{
   Align, Column, Container, Element, Length, Text, button, Button,
 };
-use super::Message;
+use super::message::*;
 
 use std::time::{Duration, Instant};
 /*

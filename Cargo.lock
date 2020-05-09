@@ -1224,6 +1224,7 @@ dependencies = [
  "async-std",
  "futures 0.3.4",
  "log",
+ "tokio",
  "wasm-bindgen-futures 0.4.10",
 ]
 
@@ -2484,6 +2485,7 @@ dependencies = [
  "memchr",
  "mio",
  "mio-uds",
+ "num_cpus",
  "pin-project-lite",
  "slab",
  "tokio-macros",
