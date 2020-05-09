@@ -2,14 +2,14 @@ extern crate futures;
 extern crate tokio;
 
 use iced::{
-  text_input, Align, Application, Column, Command, Container, Subscription,
+  text_input, Align, Application, Column, Command, Container, Subscription, button, Button,
   Element, Length, Settings, Text, //TextInput,PaneGrid, pane_grid, Background, container,
 };
 use serde::{Deserialize, Serialize};
 use super::util;
 use super::every::time;
 use std::time::{Duration, Instant};
-
+use super::download;
 
 // 本当は要らない
 pub fn main() {
@@ -25,6 +25,8 @@ pub struct State {
   dirty: bool,
   duration: Duration,
   last_tick: Instant,
+  progress: f32,
+  button: button::State,
 }
 
 impl Default for State {
@@ -37,17 +39,21 @@ impl Default for State {
       dirty: true,
       duration: Duration::default(),
       last_tick: std::time::Instant::now(),
+      progress: 0.0,
+      button: button::State::new(),
     }
   }
 }
 
-// 読み込み済み、保存済み、入力変化した
+// 読み込み済み、保存済み、入力変化した イベントの状態
 #[derive(Debug, Clone)]
 pub enum Message {
     Loaded(Result<SavedState, LoadError>),
     Saved(Result<(), SaveError>),
     InputChanged(String),
     Tick(Instant),
+    Download,
+    DownloadProgressed(download::Progress),
 }
 
 // 状態の内、保存する情報のモデル
@@ -143,7 +149,22 @@ impl Application for App {
             state.duration += now - *last_tick;
             state.last_tick = now;
           },
-          _ => {}
+          Message::Download => match self {
+            _ => {}
+          },
+          Message::DownloadProgressed(message) => match message {
+            download::Progress::Started => {
+                state.progress = 0.0;
+            }
+            download::Progress::Advanced(percentage) => {
+                state.progress = percentage;
+            }
+            download::Progress::Finished => {
+            }
+            download::Progress::Errored => {
+            }
+        },
+        _ => {}
       }
         if !saved {
           state.dirty = true;
@@ -183,8 +204,38 @@ impl Application for App {
       App::Loaded(State{
         display_value,
         duration,
+        button,
         ..
-      }) => util::show_display_val(&display_value, &duration),
+      }) => {
+        const MINUTE: u64 = 60;
+        const HOUR: u64 = 60 * MINUTE;
+        let seconds = duration.as_secs();
+        let duration = Text::new(format!(
+          "{:0>2}:{:0>2}:{:0>2}",
+          seconds / HOUR,
+          (seconds % HOUR) / MINUTE,
+          seconds % MINUTE
+      ));
+        //static b:button::State = *button;
+      let control: Element<_> = {
+            Button::new(button,Text::new("Start the download!"))
+                .on_press(Message::Download)
+                .into()
+        };
+        let content = Column::new()
+            .padding(20)
+            .spacing(20)
+            .max_width(500)
+            .align_items(Align::Start)
+            .push(Text::new("test:"))
+            .push(duration)
+            .push(Text::new(display_value.to_string()))
+            .push(control);
+        Container::new(content)
+            .width(Length::FillPortion(2))
+            .height(Length::Fill)
+            .into()
+      }
     }
   }
 }

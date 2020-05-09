@@ -15,6 +15,7 @@ async fn ircfunc() -> Result<(), failure::Error>{
   client.identify()?;
   let mut stream = client.stream()?;
   // https://doc.rust-lang.org/std/option/enum.Option.html#method.transpose
+  // transpose https://doc.rust-lang.org/std/result/enum.Result.html
   /*
   while let Some(message) = stream.next().await.transpose()? {
     print!("{}", message);
@@ -36,14 +37,6 @@ async fn makeApp() -> Result<(), failure::Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), failure::Error> {
-  let config = Config::load("config.toml").unwrap();
-  let mut client = Client::from_config(config).await?;
-  client.identify()?;
-  let mut stream = client.stream()?;
-  while let Some(message) = stream.next().await {
-    print!("{}", message?);
-    };
-  // transpose https://doc.rust-lang.org/std/result/enum.Result.html
-
+  App::run(Settings::default());
   Ok(())
 }
