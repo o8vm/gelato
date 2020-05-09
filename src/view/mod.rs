@@ -1,6 +1,6 @@
 pub mod app;
 pub mod util;
-pub mod every;
+pub mod time;
 pub mod download;
 pub use self::app::App;
 pub use self::app::State;

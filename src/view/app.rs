@@ -1,15 +1,26 @@
 extern crate futures;
 extern crate tokio;
 
+use super::download;
+use super::time;
+use super::util;
 use iced::{
-  text_input, Align, Application, Column, Command, Container, Subscription, button, Button,
-  Element, Length, Settings, Text, //TextInput,PaneGrid, pane_grid, Background, container,
+  button,
+  text_input,
+  Align,
+  Application,
+  Button,
+  Column,
+  Command,
+  Container,
+  Element,
+  Length,
+  Settings,
+  Subscription,
+  Text, //TextInput,PaneGrid, pane_grid, Background, container,
 };
 use serde::{Deserialize, Serialize};
-use super::util;
-use super::every::time;
 use std::time::{Duration, Instant};
-use super::download;
 
 // 本当は要らない
 pub fn main() {
@@ -48,19 +59,19 @@ impl Default for State {
 // 読み込み済み、保存済み、入力変化した イベントの状態
 #[derive(Debug, Clone)]
 pub enum Message {
-    Loaded(Result<SavedState, LoadError>),
-    Saved(Result<(), SaveError>),
-    InputChanged(String),
-    Tick(Instant),
-    Download,
-    DownloadProgressed(download::Progress),
+  Loaded(Result<SavedState, LoadError>),
+  Saved(Result<(), SaveError>),
+  InputChanged(String),
+  Tick(Instant),
+  Download,
+  DownloadProgressed(download::Progress),
 }
 
 // 状態の内、保存する情報のモデル
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedState {
-    input_value: String,
-    display_value: String,
+  input_value: String,
+  display_value: String,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -73,7 +84,7 @@ impl SavedState {
             "input_value": "43"
         }"#;
     serde_json::from_str(&contents).map_err(|_| LoadError::FormatError)
-}
+  }
   // ファイルに状態を保存
   async fn save(self) -> Result<(), SaveError> {
     Ok(())
@@ -82,18 +93,18 @@ impl SavedState {
 
 #[derive(Debug, Clone)]
 pub enum LoadError {
-    // ファイル読み込み時エラー状態名
-    FileError,
-    FormatError,
+  // ファイル読み込み時エラー状態名
+  FileError,
+  FormatError,
 }
 
 #[derive(Debug, Clone)]
 pub enum SaveError {
-    // 設定ファイル保存時のエラー状態名
-    DirectoryError,
-    FileError,
-    WriteError,
-    FormatError,
+  // 設定ファイル保存時のエラー状態名
+  DirectoryError,
+  FileError,
+  WriteError,
+  FormatError,
 }
 
 pub enum App {
@@ -125,10 +136,10 @@ impl Application for App {
       App::Loading => {
         match message {
           Message::Loaded(Ok(state)) => {
-            *self = App::Loaded (State {
+            *self = App::Loaded(State {
               display_value: state.display_value,
               ..State::default()
-              });
+            });
           }
           Message::Loaded(Err(_)) => {
             *self = App::Loaded(State::default());
@@ -143,29 +154,27 @@ impl Application for App {
           Message::Saved(_) => {
             state.saving = false;
             saved = true;
-          },
+          }
           Message::Tick(now) => {
             let last_tick = &state.last_tick;
             state.duration += now - *last_tick;
             state.last_tick = now;
-          },
+          }
           Message::Download => match self {
             _ => {}
           },
           Message::DownloadProgressed(message) => match message {
             download::Progress::Started => {
-                state.progress = 0.0;
+              state.progress = 0.0;
             }
             download::Progress::Advanced(percentage) => {
-                state.progress = percentage;
+              state.progress = percentage;
             }
-            download::Progress::Finished => {
-            }
-            download::Progress::Errored => {
-            }
-        },
-        _ => {}
-      }
+            download::Progress::Finished => {}
+            download::Progress::Errored => {}
+          },
+          _ => {}
+        }
         if !saved {
           state.dirty = true;
         }
@@ -175,8 +184,9 @@ impl Application for App {
           Command::perform(
             SavedState {
               input_value: state.input_value.clone(),
-              display_value: state.display_value.clone()
-            }.save(),
+              display_value: state.display_value.clone(),
+            }
+            .save(),
             Message::Saved,
           )
         } else {
@@ -188,20 +198,18 @@ impl Application for App {
   // サブスクリプションの登録
   fn subscription(&self) -> Subscription<Message> {
     match self {
-      App::Loaded(State {display_value, ..}) => {
+      App::Loaded(State { display_value, .. }) => {
         time::every(Duration::from_millis(10)).map(Message::Tick)
         //Subscription::none()
-      },
-      _ => {
-        Subscription::none()
       }
+      _ => Subscription::none(),
+    }
   }
-}
   // アプリケーションの表示を操作
-   fn view(&mut self) -> Element<Self::Message> {
+  fn view(&mut self) -> Element<Self::Message> {
     match self {
       App::Loading => util::loading_message(),
-      App::Loaded(State{
+      App::Loaded(State {
         display_value,
         duration,
         button,
@@ -215,26 +223,26 @@ impl Application for App {
           seconds / HOUR,
           (seconds % HOUR) / MINUTE,
           seconds % MINUTE
-      ));
+        ));
         //static b:button::State = *button;
-      let control: Element<_> = {
-            Button::new(button,Text::new("Start the download!"))
-                .on_press(Message::Download)
-                .into()
+        let control: Element<_> = {
+          Button::new(button, Text::new("Start the download!"))
+            .on_press(Message::Download)
+            .into()
         };
         let content = Column::new()
-            .padding(20)
-            .spacing(20)
-            .max_width(500)
-            .align_items(Align::Start)
-            .push(Text::new("test:"))
-            .push(duration)
-            .push(Text::new(display_value.to_string()))
-            .push(control);
+          .padding(20)
+          .spacing(20)
+          .max_width(500)
+          .align_items(Align::Start)
+          .push(Text::new("test:"))
+          .push(duration)
+          .push(Text::new(display_value.to_string()))
+          .push(control);
         Container::new(content)
-            .width(Length::FillPortion(2))
-            .height(Length::Fill)
-            .into()
+          .width(Length::FillPortion(2))
+          .height(Length::Fill)
+          .into()
       }
     }
   }
