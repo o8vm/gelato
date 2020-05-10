@@ -34,9 +34,7 @@ where
       |state| async move {
         match state {
           DownloadState::Ready(url) => {
-            println!("DownloadState Ready");
             let response = reqwest::get(&url).await;
-            println!("response");
 
             match response {
               Ok(response) => {
@@ -62,7 +60,6 @@ where
             downloaded,
           } => match response.chunk().await {
             Ok(Some(chunk)) => {
-              println!("DownloadState Downloading chunk");
               let downloaded = downloaded + chunk.len() as u64;
 
               let percentage = (downloaded as f32 / total as f32) * 100.0;
@@ -80,7 +77,6 @@ where
             Err(_) => Some((Progress::Errored, DownloadState::Finished)),
           },
           DownloadState::Finished => {
-            println!("DownloadState Finished");
             // We do not let the stream die, as it would start a
             // new download repeatedly if the user is not careful
             // in case of errors.

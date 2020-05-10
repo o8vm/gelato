@@ -18,6 +18,7 @@ pub fn main() {
 }
 
 // アプリケーションの状態管理
+#[derive(Debug, Clone)]
 pub struct State {
   input: text_input::State,
   input_value: String,
@@ -58,7 +59,6 @@ impl State {
     default
   }
 }
-
 // 状態の内、保存する情報のモデル
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedState {
@@ -97,6 +97,10 @@ pub enum SaveError {
   FileError,
   WriteError,
   FormatError,
+}
+#[derive(Debug, Clone)]
+pub enum DownloadError {
+  DownloadError
 }
 
 pub enum App {
@@ -137,7 +141,6 @@ impl Application for App {
             saved = true;
           }
           Message::Download => {
-            println!("update Message::Download");
             download = true;
           }
           Message::Tick(now) => {
@@ -163,11 +166,9 @@ impl Application for App {
             Message::Saved,
           )
         } else if download {
-          println!("Here 0");
-          let mut state_edit = State::default();
+          let mut state_edit = state.clone();
           state_edit.progress = 0.0;
           *self = App::Downloading(state_edit);
-          println!("Here 1");
           Command::none()
         } else {
           Command::none()
@@ -197,11 +198,16 @@ impl Application for App {
           _ => {}
         }
         if download_done {
-          *self = App::Downloaded(State::default());
-          Command::none()
+          *self = App::Downloaded(state.clone());
+          Command::perform(Message::change(), Message::Downloaded)
         } else {
           Command::none()
         }
+      }
+      App::Downloaded(state) => {
+        let mut state_edit = state.clone();
+        *self = App::Loaded(state_edit);
+        Command::none()
       }
       _ => Command::none(),
     }
@@ -209,46 +215,35 @@ impl Application for App {
   // サブスクリプションの登録
   fn subscription(&self) -> Subscription<Message> {
     match self {
-      App::Loaded(State { .. }) => time::every(Duration::from_millis(10)).map(Message::Tick),
-      App::Downloading { .. } => {
-        println!("subscription begin");
-        download::file("https://twitter.com/stangeltties/status/1256883350440034310/photo/1")
-          .map(Message::DownloadProgressed)
+      App::Loaded(State { .. })  => {
+        time::every(Duration::from_millis(10)).map(Message::Tick)
       }
-      _ => Subscription::none(),
+      App::Downloading (State{ .. }) => {
+        download::file("https://speed.hetzner.de/100MB.bin")
+          .map(Message::DownloadProgressed)
+      },
+      _ => {
+        Subscription::none()
+      },
     }
   }
   // アプリケーションの表示を操作
   fn view(&mut self) -> Element<Self::Message> {
     let current_progress = match self {
-      App::Downloading(State { progress, .. }) => *progress,
+      App::Downloading(State { progress, .. })
+      | App::Loaded(State { progress, ..}) => *progress,
       App::Downloaded { .. } => 100.0,
       _ => 0.0,
     };
     let progress_bar = ProgressBar::new(0.0..=100.0, current_progress);
     match self {
       App::Loading => util::loading_message(),
-      App::Loaded(State {
-        display_value,
-        duration,
-        button,
-        ..
-      })
-      | App::Downloaded(State {
-        display_value,
-        duration,
-        button,
-        ..
-      })
-      | App::Downloading(State {
-        display_value,
-        duration,
-        button,
-        ..
-      }) => {
+      App::Loaded(state)
+      | App::Downloaded(state)
+      | App::Downloading(state) => {
         const MINUTE: u64 = 60;
         const HOUR: u64 = 60 * MINUTE;
-        let seconds = duration.as_secs();
+        let seconds = state.duration.as_secs();
         let duration = Text::new(format!(
           "{:0>2}:{:0>2}:{:0>2}",
           seconds / HOUR,
@@ -257,7 +252,7 @@ impl Application for App {
         ));
         //static b:button::State = *button;
         let control: Element<_> = {
-          Button::new(button, Text::new("Start the download!"))
+          Button::new(&mut state.button, Text::new("Start the download!"))
             .on_press(Message::Download)
             .into()
         };
@@ -268,7 +263,7 @@ impl Application for App {
           .align_items(Align::Start)
           .push(Text::new("test:"))
           .push(duration)
-          .push(Text::new(display_value.to_string()))
+          .push(Text::new(state.display_value.to_string()))
           .push(control)
           .push(progress_bar);
         Container::new(content)
