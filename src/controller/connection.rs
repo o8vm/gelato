@@ -17,7 +17,7 @@ async fn main() -> Result<(), failure::Error> {
     //    nickname: Some("nick".to_owned()),
     //    server: Some("serverurl".to_owned()),
     //    channels: vec!["#channelname".to_owned()],
-    //    use_ssl: true,
+    //    use_tls: true,
     //    ..Config::default()
     //};
 

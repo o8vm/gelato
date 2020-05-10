@@ -1,4 +1,7 @@
+use futures::*;
 use iced_futures::futures;
+use irc::client::prelude::*;
+use std::process;
 
 // Just a little utility function
 pub fn file<T: ToString>(url: T) -> iced::Subscription<Progress> {
@@ -9,6 +12,21 @@ pub fn file<T: ToString>(url: T) -> iced::Subscription<Progress> {
 
 pub struct Download {
   url: String,
+}
+
+async fn ircfunc() -> Result<irc::client::ClientStream, failure::Error> {
+  let config = Config::load("config.toml").unwrap();
+  let mut client = Client::from_config(config).await?;
+  client.identify()?;
+  let mut stream = client.stream()?;
+  // https://doc.rust-lang.org/std/option/enum.Option.html#method.transpose
+  // transpose https://doc.rust-lang.org/std/result/enum.Result.html
+  /*
+  while let Some(message) = stream.next().await.transpose()? {
+    print!("{}", message);
+    };
+  */
+  Ok(stream)
 }
 
 // Make sure iced can use our download stream
@@ -35,7 +53,18 @@ where
         match state {
           DownloadState::Ready(url) => {
             let response = reqwest::get(&url).await;
-
+            let result_stream: Result<irc::client::ClientStream, failure::Error> = ircfunc().await;
+            let mut irc_stream: irc::client::ClientStream = match result_stream {
+              Ok(v) => v,
+              Err(e) => {
+                eprintln!("Error at st: {}", e);
+                process::exit(1);
+              }
+            };
+            // st.next().await.transpose() : Result<Option<Message, ...>>
+            while let Some(message) = irc_stream.next().await.transpose().unwrap() {
+              println!("{}", message);
+            }
             match response {
               Ok(response) => {
                 if let Some(total) = response.content_length() {

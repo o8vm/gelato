@@ -14,7 +14,7 @@ edition = "2018"
 [dependencies]
 openssl-sys = "0.9.55"
 openssl = "0.10.29"
-irc = { git = "https://github.com/lilybrevec/irc", branch = "0.14", features = ["ctcp", "toml"] }
+irc = { version = "0.14", features = ["ctcp", "toml"] }
 futures = "0.3.4"
 tokio = "0.2.18"
 failure = "0.1.7"
