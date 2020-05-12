@@ -1,24 +1,22 @@
 use futures::*;
 use iced_futures::futures;
 use irc::client::prelude::*;
-use std::process;
 
 // Just a little utility function
-pub fn file<T: ToString>(url: T) -> iced::Subscription<Progress> {
+pub fn file<T: ToString>(some_input: T) -> iced::Subscription<Progress> {
   iced::Subscription::from_recipe(Download {
-    url: url.to_string(),
+    some_input: some_input.to_string(),
   })
 }
 
 pub struct Download {
-  url: String,
+  some_input: String,
 }
 
 async fn ircfunc() -> Result<irc::client::ClientStream, failure::Error> {
   let config = Config::load("config.toml").unwrap();
   let mut client = Client::from_config(config).await?;
   client.identify()?;
-  let mut stream = client.stream()?;
   // https://doc.rust-lang.org/std/option/enum.Option.html#method.transpose
   // transpose https://doc.rust-lang.org/std/result/enum.Result.html
   /*
@@ -26,7 +24,7 @@ async fn ircfunc() -> Result<irc::client::ClientStream, failure::Error> {
     print!("{}", message);
     };
   */
-  Ok(stream)
+  Ok(client.stream()?)
 }
 
 // Make sure iced can use our download stream
@@ -40,7 +38,7 @@ where
     use std::hash::Hash;
 
     std::any::TypeId::of::<Self>().hash(state);
-    self.url.hash(state);
+    self.some_input.hash(state);
   }
 
   fn stream(
@@ -48,57 +46,39 @@ where
     _input: futures::stream::BoxStream<'static, I>,
   ) -> futures::stream::BoxStream<'static, Self::Output> {
     Box::pin(futures::stream::unfold(
-      DownloadState::Ready(self.url),
+      DownloadState::Ready(self.some_input),
       |state| async move {
         match state {
-          DownloadState::Ready(url) => {
-            let response = reqwest::get(&url).await;
+          DownloadState::Ready(some_input) => {
             let result_stream: Result<irc::client::ClientStream, failure::Error> = ircfunc().await;
-            let mut irc_stream: irc::client::ClientStream = match result_stream {
-              Ok(v) => v,
-              Err(e) => {
-                eprintln!("Error at st: {}", e);
-                process::exit(1);
-              }
-            };
-            // st.next().await.transpose() : Result<Option<Message, ...>>
-            while let Some(message) = irc_stream.next().await.transpose().unwrap() {
-              println!("{}", message);
-            }
-            match response {
-              Ok(response) => {
-                if let Some(total) = response.content_length() {
+            match result_stream {
+              Ok(client_stream) => {
                   Some((
                     Progress::Started,
                     DownloadState::Downloading {
-                      response,
-                      total,
-                      downloaded: 0,
-                    },
+                      client_stream,
+                      message_text: String::from(""),
+                    }
                   ))
-                } else {
-                  Some((Progress::Errored, DownloadState::Finished))
-                }
               }
-              Err(_) => Some((Progress::Errored, DownloadState::Finished)),
+              Err(_) => {
+                Some((Progress::Errored, DownloadState::Finished))
+              },
             }
           }
           DownloadState::Downloading {
-            mut response,
-            total,
-            downloaded,
-          } => match response.chunk().await {
+            mut client_stream,
+            mut message_text,
+          } => match client_stream.next().await.transpose() {
             Ok(Some(chunk)) => {
-              let downloaded = downloaded + chunk.len() as u64;
-
-              let percentage = (downloaded as f32 / total as f32) * 100.0;
-
+              //let downloaded = downloaded + chunk.to_string().len() as u64;
+              //let percentage = (downloaded as f32 / total as f32) * 100.0;
+              message_text.push_str(&chunk.to_string());
               Some((
-                Progress::Advanced(percentage),
+                Progress::Advanced(message_text.clone()),
                 DownloadState::Downloading {
-                  response,
-                  total,
-                  downloaded,
+                  client_stream,
+                  message_text
                 },
               ))
             }
@@ -122,7 +102,7 @@ where
 #[derive(Debug, Clone)]
 pub enum Progress {
   Started,
-  Advanced(f32),
+  Advanced(String),
   Finished,
   Errored,
 }
@@ -130,9 +110,8 @@ pub enum Progress {
 pub enum DownloadState {
   Ready(String),
   Downloading {
-    response: reqwest::Response,
-    total: u64,
-    downloaded: u64,
+    client_stream: irc::client::ClientStream,
+    message_text: String,
   },
   Finished,
 }

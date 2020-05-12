@@ -1,20 +1,8 @@
-use std::time::{Duration, Instant};
 // https://github.com/hecrj/iced/tree/master/examples/stopwatch
 // stopwatchを移植してみた
 
-use futures::stream::Stream;
 use iced::futures;
-extern crate irc;
-use irc::client::prelude::*;
-use irc::client::ClientStream;
 
-pub async fn client_setting() -> Result<ClientStream, failure::Error> {
-  let config = Config::load("config.toml").unwrap();
-  let mut client = Client::from_config(config).await?;
-  client.identify()?;
-  let mut stream = client.stream()?;
-  Ok(stream)
-}
 
 pub fn every(duration: std::time::Duration) -> iced::Subscription<std::time::Instant> {
   iced::Subscription::from_recipe(Every(duration))
@@ -38,11 +26,7 @@ where
     self: Box<Self>,
     _input: futures::stream::BoxStream<'static, I>,
   ) -> futures::stream::BoxStream<'static, Self::Output> {
-    use futures::prelude::*;
-    use futures::stream::{Stream, StreamExt};
-    let cstream = client_setting();
-    // give up ...
-    //let a = cstream.map(|m| {let Some(k) = m; k});
+    use futures::stream::{StreamExt};
     async_std::stream::interval(self.0)
       .map(|_| std::time::Instant::now())
       .boxed()

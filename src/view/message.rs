@@ -1,5 +1,5 @@
 use super::download;
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 use super::app::*;
 use super::app::SavedState;
 use super::app::DownloadError;

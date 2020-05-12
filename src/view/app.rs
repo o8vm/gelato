@@ -179,19 +179,16 @@ impl Application for App {
         match message {
           Message::DownloadProgressed(dmessage) => match dmessage {
             download::Progress::Started => {
-              println!("update Message::DownloadProgressed Started");
               state.progress = 0.0;
             }
-            download::Progress::Advanced(percentage) => {
-              println!("update Message::DownloadProgressed advanced");
-              state.progress = percentage;
+            download::Progress::Advanced(message_text) => {
+              state.progress = 0.0;
+              state.display_value = message_text;
             }
             download::Progress::Finished => {
-              println!("update Message::DownloadProgressed finished");
               download_done = true;
             }
             download::Progress::Errored => {
-              println!("update Message::DownloadProgressed errored");
               download_done = true;
             }
           },
@@ -205,11 +202,9 @@ impl Application for App {
         }
       }
       App::Downloaded(state) => {
-        let mut state_edit = state.clone();
-        *self = App::Loaded(state_edit);
+        *self = App::Loaded(state.clone());
         Command::none()
       }
-      _ => Command::none(),
     }
   }
   // サブスクリプションの登録
@@ -271,10 +266,6 @@ impl Application for App {
           .height(Length::Fill)
           .into()
       }
-      _ => Container::new(Column::new())
-        .width(Length::FillPortion(2))
-        .height(Length::Fill)
-        .into(),
     }
   }
 }
