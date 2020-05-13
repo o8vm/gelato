@@ -1,10 +1,3 @@
-extern crate futures;
-extern crate tokio;
-
-use super::download;
-use super::message::*;
-use super::time;
-use super::util;
 use iced::{
   button, text_input, Align, Application, Button, Column, Command, Container, Element, Length,
   ProgressBar, Settings, Subscription, Text,
@@ -12,7 +5,10 @@ use iced::{
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-// 本当は要らない
+use crate::model::{subscribe_irc, subscribe_time, message::*};
+use crate::view::util;
+
+
 pub fn main() {
   App::run(Settings::default())
 }
@@ -178,17 +174,17 @@ impl Application for App {
         let mut download_done = false;
         match message {
           Message::DownloadProgressed(dmessage) => match dmessage {
-            download::Progress::Started => {
+            subscribe_irc::Progress::Started => {
               state.progress = 0.0;
             }
-            download::Progress::Advanced(message_text) => {
+            subscribe_irc::Progress::Advanced(message_text) => {
               state.progress = 0.0;
               state.display_value = message_text;
             }
-            download::Progress::Finished => {
+            subscribe_irc::Progress::Finished => {
               download_done = true;
             }
-            download::Progress::Errored => {
+            subscribe_irc::Progress::Errored => {
               download_done = true;
             }
           },
@@ -211,10 +207,10 @@ impl Application for App {
   fn subscription(&self) -> Subscription<Message> {
     match self {
       App::Loaded(State { .. })  => {
-        time::every(Duration::from_millis(10)).map(Message::Tick)
+        subscribe_time::every(Duration::from_millis(10)).map(Message::Tick)
       }
       App::Downloading (State{ .. }) => {
-        download::file("https://speed.hetzner.de/100MB.bin")
+        subscribe_irc::input("")
           .map(Message::DownloadProgressed)
       },
       _ => {

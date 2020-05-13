@@ -1,9 +1,9 @@
-use super::download;
-use std::time::{Instant};
-use super::app::*;
-use super::app::SavedState;
-use super::app::DownloadError;
 use iced::{Command};
+use std::time::{Instant};
+use crate::model::subscribe_irc;
+use crate::app::*;
+use crate::app::{SavedState, DownloadError};
+
 // 読み込み済み、保存済み、入力変化した イベントの状態
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -12,7 +12,7 @@ pub enum Message {
   InputChanged(String),
   Tick(Instant),
   Download,
-  DownloadProgressed(download::Progress),
+  DownloadProgressed(subscribe_irc::Progress),
   Downloaded(Result<(), DownloadError>)
 }
 

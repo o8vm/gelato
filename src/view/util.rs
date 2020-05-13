@@ -1,7 +1,7 @@
+use crate::model::message::Message;
 use iced::{
   Align, Column, Container, Element, Length, Text, button, Button,
 };
-use super::message::*;
 
 use std::time::{Duration, Instant};
 /*

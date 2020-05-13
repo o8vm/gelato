@@ -3,13 +3,13 @@ use iced_futures::futures;
 use irc::client::prelude::*;
 
 // Just a little utility function
-pub fn file<T: ToString>(some_input: T) -> iced::Subscription<Progress> {
-  iced::Subscription::from_recipe(Download {
+pub fn input<T: ToString>(some_input: T) -> iced::Subscription<Progress> {
+  iced::Subscription::from_recipe(SubscribeIrc {
     some_input: some_input.to_string(),
   })
 }
 
-pub struct Download {
+pub struct SubscribeIrc {
   some_input: String,
 }
 
@@ -28,7 +28,7 @@ async fn ircfunc() -> Result<irc::client::ClientStream, failure::Error> {
 }
 
 // Make sure iced can use our download stream
-impl<H, I> iced_native::subscription::Recipe<H, I> for Download
+impl<H, I> iced_native::subscription::Recipe<H, I> for SubscribeIrc
 where
   H: std::hash::Hasher,
 {
@@ -46,27 +46,27 @@ where
     _input: futures::stream::BoxStream<'static, I>,
   ) -> futures::stream::BoxStream<'static, Self::Output> {
     Box::pin(futures::stream::unfold(
-      DownloadState::Ready(self.some_input),
+      SubscribeIrcState::Ready(self.some_input),
       |state| async move {
         match state {
-          DownloadState::Ready(some_input) => {
+          SubscribeIrcState::Ready(some_input) => {
             let result_stream: Result<irc::client::ClientStream, failure::Error> = ircfunc().await;
             match result_stream {
               Ok(client_stream) => {
                   Some((
                     Progress::Started,
-                    DownloadState::Downloading {
+                    SubscribeIrcState::Incoming {
                       client_stream,
                       message_text: String::from(""),
                     }
                   ))
               }
               Err(_) => {
-                Some((Progress::Errored, DownloadState::Finished))
+                Some((Progress::Errored, SubscribeIrcState::Finished))
               },
             }
           }
-          DownloadState::Downloading {
+          SubscribeIrcState::Incoming {
             mut client_stream,
             mut message_text,
           } => match client_stream.next().await.transpose() {
@@ -76,16 +76,16 @@ where
               message_text.push_str(&chunk.to_string());
               Some((
                 Progress::Advanced(message_text.clone()),
-                DownloadState::Downloading {
+                SubscribeIrcState::Incoming {
                   client_stream,
                   message_text
                 },
               ))
             }
-            Ok(None) => Some((Progress::Finished, DownloadState::Finished)),
-            Err(_) => Some((Progress::Errored, DownloadState::Finished)),
+            Ok(None) => Some((Progress::Finished, SubscribeIrcState::Finished)),
+            Err(_) => Some((Progress::Errored, SubscribeIrcState::Finished)),
           },
-          DownloadState::Finished => {
+          SubscribeIrcState::Finished => {
             // We do not let the stream die, as it would start a
             // new download repeatedly if the user is not careful
             // in case of errors.
@@ -107,9 +107,9 @@ pub enum Progress {
   Errored,
 }
 
-pub enum DownloadState {
+pub enum SubscribeIrcState {
   Ready(String),
-  Downloading {
+  Incoming {
     client_stream: irc::client::ClientStream,
     message_text: String,
   },
