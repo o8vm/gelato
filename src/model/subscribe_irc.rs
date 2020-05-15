@@ -71,8 +71,6 @@ where
             mut message_text,
           } => match client_stream.next().await.transpose() {
             Ok(Some(chunk)) => {
-              //let downloaded = downloaded + chunk.to_string().len() as u64;
-              //let percentage = (downloaded as f32 / total as f32) * 100.0;
               message_text.push_str(&chunk.to_string());
               Some((
                 Progress::Advanced(message_text.clone()),

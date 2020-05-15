@@ -95,15 +95,15 @@ pub enum SaveError {
   FormatError,
 }
 #[derive(Debug, Clone)]
-pub enum DownloadError {
-  DownloadError
+pub enum IrcError {
+  IrcError
 }
 
 pub enum App {
   Loading,
   Loaded(State),
-  Downloading(State),
-  Downloaded(State),
+  IrcConnecting(State),
+  IrcFinished(State),
 }
 
 impl Application for App {
@@ -130,14 +130,14 @@ impl Application for App {
       App::Loading => app_loading_command(self, message),
       App::Loaded(state) => {
         let mut saved = false;
-        let mut download = false;
+        let mut ircflag = false;
         match message {
           Message::Saved(_) => {
             state.saving = false;
             saved = true;
           }
-          Message::Download => {
-            download = true;
+          Message::IrcStart => {
+            ircflag = true;
           }
           Message::Tick(now) => {
             let last_tick = &state.last_tick;
@@ -161,19 +161,19 @@ impl Application for App {
             .save(),
             Message::Saved,
           )
-        } else if download {
+        } else if ircflag {
           let mut state_edit = state.clone();
           state_edit.progress = 0.0;
-          *self = App::Downloading(state_edit);
+          *self = App::IrcConnecting(state_edit);
           Command::none()
         } else {
           Command::none()
         }
       }
-      App::Downloading(state) => {
-        let mut download_done = false;
+      App::IrcConnecting(state) => {
+        let mut irc_finished = false;
         match message {
-          Message::DownloadProgressed(dmessage) => match dmessage {
+          Message::IrcProgressed(dmessage) => match dmessage {
             subscribe_irc::Progress::Started => {
               state.progress = 0.0;
             }
@@ -182,22 +182,22 @@ impl Application for App {
               state.display_value = message_text;
             }
             subscribe_irc::Progress::Finished => {
-              download_done = true;
+              irc_finished = true;
             }
             subscribe_irc::Progress::Errored => {
-              download_done = true;
+              irc_finished = true;
             }
           },
           _ => {}
         }
-        if download_done {
-          *self = App::Downloaded(state.clone());
-          Command::perform(Message::change(), Message::Downloaded)
+        if irc_finished {
+          *self = App::IrcFinished(state.clone());
+          Command::perform(Message::change(), Message::IrcFinished)
         } else {
           Command::none()
         }
       }
-      App::Downloaded(state) => {
+      App::IrcFinished(state) => {
         *self = App::Loaded(state.clone());
         Command::none()
       }
@@ -209,9 +209,9 @@ impl Application for App {
       App::Loaded(State { .. })  => {
         subscribe_time::every(Duration::from_millis(10)).map(Message::Tick)
       }
-      App::Downloading (State{ .. }) => {
+      App::IrcConnecting (State{ .. }) => {
         subscribe_irc::input("")
-          .map(Message::DownloadProgressed)
+          .map(Message::IrcProgressed)
       },
       _ => {
         Subscription::none()
@@ -220,18 +220,11 @@ impl Application for App {
   }
   // アプリケーションの表示を操作
   fn view(&mut self) -> Element<Self::Message> {
-    let current_progress = match self {
-      App::Downloading(State { progress, .. })
-      | App::Loaded(State { progress, ..}) => *progress,
-      App::Downloaded { .. } => 100.0,
-      _ => 0.0,
-    };
-    let progress_bar = ProgressBar::new(0.0..=100.0, current_progress);
     match self {
       App::Loading => util::loading_message(),
       App::Loaded(state)
-      | App::Downloaded(state)
-      | App::Downloading(state) => {
+      | App::IrcFinished(state)
+      | App::IrcConnecting(state) => {
         const MINUTE: u64 = 60;
         const HOUR: u64 = 60 * MINUTE;
         let seconds = state.duration.as_secs();
@@ -243,8 +236,8 @@ impl Application for App {
         ));
         //static b:button::State = *button;
         let control: Element<_> = {
-          Button::new(&mut state.button, Text::new("Start the download!"))
-            .on_press(Message::Download)
+          Button::new(&mut state.button, Text::new("Start IRC"))
+            .on_press(Message::IrcStart)
             .into()
         };
         let content = Column::new()
@@ -255,8 +248,7 @@ impl Application for App {
           .push(Text::new("test:"))
           .push(duration)
           .push(Text::new(state.display_value.to_string()))
-          .push(control)
-          .push(progress_bar);
+          .push(control);
         Container::new(content)
           .width(Length::FillPortion(2))
           .height(Length::Fill)
