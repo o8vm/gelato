@@ -1,5 +1,5 @@
 use iced::{
-  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row, Font
+  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row
 };
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -24,6 +24,7 @@ pub struct State {
   last_tick: Instant,
   progress: f32,
   button: button::State,
+  button2: button::State,
   scroll: scrollable::State,
 }
 
@@ -39,6 +40,7 @@ impl Default for State {
       last_tick: std::time::Instant::now(),
       progress: 0.0,
       button: button::State::new(),
+      button2: button::State::new(),
       scroll: scrollable::State::new()
     }
   }
@@ -189,6 +191,9 @@ impl Application for App {
               irc_finished = true;
             }
           },
+          Message::IrcFinished(_) => {
+            irc_finished = true;
+          }
           _ => {}
         }
         if irc_finished {
@@ -242,8 +247,13 @@ impl Application for App {
             .push(Text::new(state.display_value.to_string()));
         //static b:button::State = *button;
         let control: Element<_> = {
-          Button::new(&mut state.button, Text::new("スタートIRC"))
+          Button::new(&mut state.button, Text::new("Start IRC"))
             .on_press(Message::IrcStart)
+            .into()
+        };
+        let control2: Element<_> = {
+          Button::new(&mut state.button2, Text::new("Stop IRC"))
+            .on_press(Message::IrcFinished(Ok(())))
             .into()
         };
         let content = Column::new()
@@ -252,6 +262,7 @@ impl Application for App {
           .align_items(Align::Start)
           //.push(duration)
           .push(control)
+          .push(control2)
           .push( Row::new()
           .align_items(Align::Center)
           .push(scrollable),);
