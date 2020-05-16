@@ -903,6 +903,7 @@ dependencies = [
  "iced",
  "iced_futures",
  "iced_native",
+ "iced_wgpu",
  "irc",
  "openssl",
  "openssl-sys",
