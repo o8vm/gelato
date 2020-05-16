@@ -8,7 +8,7 @@ use iced::{Settings, Application};
 #[tokio::main]
 async fn main() -> Result<(), failure::Error> {
   let mut sets = Settings::default();
-  sets.default_font = Some(include_bytes!("../fonts/M_PLUS_Rounded_1c/MPLUSRounded1c-Medium.ttf"));
+  sets.default_font = Some(include_bytes!("../fonts/M_PLUS_Rounded_1c/MPLUSRounded1c-Medium_reverted.ttf"));
   gelato::App::run(sets);
   Ok(())
 }
