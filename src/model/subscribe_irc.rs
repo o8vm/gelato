@@ -71,7 +71,7 @@ where
             mut message_text,
           } => match client_stream.next().await.transpose() {
             Ok(Some(chunk)) => {
-              message_text.push_str(&chunk.to_string());
+              message_text = chunk.to_string();
               Some((
                 Progress::Advanced(message_text.clone()),
                 SubscribeIrcState::Incoming {

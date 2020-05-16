@@ -1,6 +1,7 @@
 use iced::{
   button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row
 };
+use iced_native::Rectangle;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
@@ -182,7 +183,7 @@ impl Application for App {
             }
             subscribe_irc::Progress::Advanced(message_text) => {
               state.progress = 0.0;
-              state.display_value = message_text;
+              state.display_value.push_str(&message_text);
             }
             subscribe_irc::Progress::Finished => {
               irc_finished = true;
