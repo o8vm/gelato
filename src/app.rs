@@ -1,6 +1,5 @@
 use iced::{
-  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length,
-  ProgressBar, Settings, Subscription, Text,
+  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row, Font
 };
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -25,6 +24,7 @@ pub struct State {
   last_tick: Instant,
   progress: f32,
   button: button::State,
+  scroll: scrollable::State,
 }
 
 impl Default for State {
@@ -39,6 +39,7 @@ impl Default for State {
       last_tick: std::time::Instant::now(),
       progress: 0.0,
       button: button::State::new(),
+      scroll: scrollable::State::new()
     }
   }
 }
@@ -233,22 +234,27 @@ impl Application for App {
           seconds / HOUR,
           (seconds % HOUR) / MINUTE,
           seconds % MINUTE
-        ));
+        )).size(8);
+        // Scrollable<scrollable::State> => Error
+        let scrollable:Scrollable<Message> = Scrollable::new(&mut state.scroll)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .push(Text::new(state.display_value.to_string()));
         //static b:button::State = *button;
         let control: Element<_> = {
-          Button::new(&mut state.button, Text::new("Start IRC"))
+          Button::new(&mut state.button, Text::new("スタートIRC"))
             .on_press(Message::IrcStart)
             .into()
         };
         let content = Column::new()
           .padding(20)
-          .spacing(20)
-          .max_width(500)
+          .spacing(20) 
           .align_items(Align::Start)
-          .push(Text::new("test:"))
-          .push(duration)
-          .push(Text::new(state.display_value.to_string()))
-          .push(control);
+          //.push(duration)
+          .push(control)
+          .push( Row::new()
+          .align_items(Align::Center)
+          .push(scrollable),);
         Container::new(content)
           .width(Length::FillPortion(2))
           .height(Length::Fill)
