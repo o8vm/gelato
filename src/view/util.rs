@@ -38,6 +38,15 @@ let control: Element<_> = {
       .into()
 }
 */
+pub fn filter(s: &str) -> &str {
+  let v: Vec<&str> = s.split(' ').collect();
+  if (v[1] == "PONG") {
+    ""
+  } else {
+    s
+  }
+}
+
 // メッセージ読み込み中の表示 => Utilにしたい
 pub fn loading_message() -> Element<'static, Message> {
 Container::new(

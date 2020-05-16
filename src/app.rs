@@ -182,8 +182,8 @@ impl Application for App {
               state.progress = 0.0;
             }
             subscribe_irc::Progress::Advanced(message_text) => {
-              state.progress = 0.0;
-              state.display_value.push_str(&message_text);
+              let filtered_text: &str = util::filter(&message_text);
+              state.display_value.push_str(filtered_text);
             }
             subscribe_irc::Progress::Finished => {
               irc_finished = true;
