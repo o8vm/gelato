@@ -7,4 +7,4 @@ Currently under development
 - Execute $cargo run$.
 
 ## Release
-- Ver. 0.0.1 is published as a simple IRC reader.
+- Ver. 0.0.2 is published as a simple IRC reader.

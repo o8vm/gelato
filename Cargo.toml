@@ -1,6 +1,6 @@
 [package]
 name = "gelato"
-version = "0.0.1"
+version = "0.0.2"
 description = "A GUI IRC Client. Pop and Cool"
 authors = ["Yuri Yamamoto (lilybrevec) <allabrevec@gmail.com>"]
 keywords = ["irc", "client", "gui"]
