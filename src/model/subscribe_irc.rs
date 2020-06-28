@@ -1,16 +1,16 @@
 use futures::*;
 use iced_futures::futures;
-use irc::client::prelude::*;
+use irc::client::prelude::{Client, Config};
 
 // Just a little utility function
-pub fn input<T: ToString>(some_input: T) -> iced::Subscription<Progress> {
+pub fn input() -> iced::Subscription<Progress> {
   iced::Subscription::from_recipe(SubscribeIrc {
-    some_input: some_input.to_string(),
+    some_input: "".to_string(),
   })
 }
 
 pub struct SubscribeIrc {
-  some_input: String,
+  some_input: String
 }
 
 async fn ircfunc() -> Result<irc::client::ClientStream, failure::Error> {
@@ -24,6 +24,7 @@ async fn ircfunc() -> Result<irc::client::ClientStream, failure::Error> {
     print!("{}", message);
     };
   */
+  client.send_privmsg("#mofu", "beepj").unwrap();
   Ok(client.stream()?)
 }
 

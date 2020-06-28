@@ -10,6 +10,7 @@ pub enum Message {
   Loaded(Result<SavedState, LoadError>),
   Saved(Result<(), SaveError>),
   InputChanged(String),
+  SendText,
   Tick(Instant),
   IrcStart,
   IrcProgressed(subscribe_irc::Progress),

@@ -1,5 +1,5 @@
 use iced::{
-  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row
+  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, TextInput, Row
 };
 use iced_native::Rectangle;
 use serde::{Deserialize, Serialize};
@@ -7,7 +7,14 @@ use std::time::{Duration, Instant};
 
 use crate::model::{subscribe_irc, subscribe_time, message::*};
 use crate::view::util;
+use futures::*;
+use iced_futures::futures;
+use irc::client::prelude::{Client, Config};
 
+// A unit struct without resources
+// いかなる資源も持たない構造体
+#[derive(Debug, Clone, Copy)]
+struct Nil;
 
 pub fn main() {
   App::run(Settings::default())
@@ -69,6 +76,20 @@ pub struct SavedState {
 #[cfg(not(target_arch = "wasm32"))]
 impl SavedState {
   // ファイルから状態を読み込む
+  async fn load_irc() -> Result<irc::client::Client, failure::Error> {
+    let config = Config::load("config.toml").unwrap();
+    let mut client = Client::from_config(config).await?;
+    client.identify()?;
+    // https://doc.rust-lang.org/std/option/enum.Option.html#method.transpose
+    // transpose https://doc.rust-lang.org/std/result/enum.Result.html
+    /*
+    while let Some(message) = stream.next().await.transpose()? {
+      print!("{}", message);
+      };
+    */
+    //client.send_privmsg("#mofu", "beepj").unwrap();
+    Ok(client)
+  }
   async fn load() -> Result<SavedState, LoadError> {
     let contents = r#"
         {
@@ -148,6 +169,13 @@ impl Application for App {
             state.duration += now - *last_tick;
             state.last_tick = now;
           }
+          Message::InputChanged(input_text) => {
+            state.input_value = input_text;
+          }
+          Message::SendText => {
+            state.display_value.push_str(&state.input_value);
+            state.input_value = "".to_string();
+          }
           _ => {}
         }
 
@@ -168,7 +196,8 @@ impl Application for App {
         } else if ircflag {
           let mut state_edit = state.clone();
           state_edit.progress = 0.0;
-          *self = App::IrcConnecting(state_edit);
+          //Command::perform(SavedState::load_irc(), Message::none)
+          //*self = App::IrcConnecting(state_edit, );
           Command::none()
         } else {
           Command::none()
@@ -195,6 +224,12 @@ impl Application for App {
           Message::IrcFinished(_) => {
             irc_finished = true;
           }
+          Message::InputChanged(input_text) => {
+            state.input_value = input_text;
+          }
+          Message::SendText => {
+            
+          }
           _ => {}
         }
         if irc_finished {
@@ -216,8 +251,8 @@ impl Application for App {
       App::Loaded(State { .. })  => {
         subscribe_time::every(Duration::from_millis(10)).map(Message::Tick)
       }
-      App::IrcConnecting (State{ .. }) => {
-        subscribe_irc::input("")
+      App::IrcConnecting (state) => {
+        subscribe_irc::input()
           .map(Message::IrcProgressed)
       },
       _ => {
@@ -257,11 +292,22 @@ impl Application for App {
             .on_press(Message::IrcFinished(Ok(())))
             .into()
         };
+
+        let text_input = TextInput::new(
+          &mut state.input,
+          "input text",
+          &mut state.input_value,
+          Message::InputChanged,
+      )
+      .padding(5)
+      .on_submit(Message::SendText);
+
         let content = Column::new()
           .padding(20)
           .spacing(20) 
           .align_items(Align::Start)
           //.push(duration)
+          .push(text_input)
           .push(control)
           .push(control2)
           .push( Row::new()
