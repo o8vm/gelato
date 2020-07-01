@@ -21,8 +21,9 @@ pub fn main() {
 }
 
 // アプリケーションの状態管理
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct State {
+  client: Option<irc::client::Client>,
   input: text_input::State,
   input_value: String,
   display_value: String,
@@ -39,6 +40,7 @@ pub struct State {
 impl Default for State {
   fn default() -> Self {
     Self {
+      client: None,
       input: text_input::State::new(),
       input_value: String::from(""),
       display_value: String::from(""),
@@ -194,10 +196,22 @@ impl Application for App {
             Message::Saved,
           )
         } else if ircflag {
-          let mut state_edit = state.clone();
-          state_edit.progress = 0.0;
+          let state_new = State {
+            client: state.client.take(),
+            input: state.input.clone(),
+            input_value: state.input_value.clone(),
+            display_value: state.display_value.clone(),
+            saving: state.saving,
+            dirty: state.dirty,
+            duration: state.duration,
+            last_tick: state.last_tick,
+            progress: 0.0,
+            button: state.button,
+            button2: state.button2,
+            scroll: state.scroll,
+          };
           //Command::perform(SavedState::load_irc(), Message::none)
-          //*self = App::IrcConnecting(state_edit, );
+          *self = App::IrcConnecting(state_new);
           Command::none()
         } else {
           Command::none()
@@ -205,6 +219,7 @@ impl Application for App {
       }
       App::IrcConnecting(state) => {
         let mut irc_finished = false;
+        // let mut state_next = *state;
         match message {
           Message::IrcProgressed(dmessage) => match dmessage {
             subscribe_irc::Progress::Started => {
@@ -233,14 +248,42 @@ impl Application for App {
           _ => {}
         }
         if irc_finished {
-          *self = App::IrcFinished(state.clone());
+          let state_new = State {
+            client: state.client.take(),
+            input: state.input.clone(),
+            input_value: state.input_value.clone(),
+            display_value: state.display_value.clone(),
+            saving: state.saving,
+            dirty: state.dirty,
+            duration: state.duration,
+            last_tick: state.last_tick,
+            progress: state.progress,
+            button: state.button,
+            button2: state.button2,
+            scroll: state.scroll,
+          };
+          *self = App::IrcFinished(state_new);
           Command::perform(Message::change(), Message::IrcFinished)
         } else {
           Command::none()
         }
       }
       App::IrcFinished(state) => {
-        *self = App::Loaded(state.clone());
+        let state_new = State {
+          client: state.client.take(),
+          input: state.input.clone(),
+          input_value: state.input_value.clone(),
+          display_value: state.display_value.clone(),
+          saving: state.saving,
+          dirty: state.dirty,
+          duration: state.duration,
+          last_tick: state.last_tick,
+          progress: state.progress,
+          button: state.button,
+          button2: state.button2,
+          scroll: state.scroll,
+        };
+        *self = App::Loaded(state_new);
         Command::none()
       }
     }
@@ -251,7 +294,7 @@ impl Application for App {
       App::Loaded(State { .. })  => {
         subscribe_time::every(Duration::from_millis(10)).map(Message::Tick)
       }
-      App::IrcConnecting (state) => {
+      App::IrcConnecting (State { .. }) => {
         subscribe_irc::input()
           .map(Message::IrcProgressed)
       },
