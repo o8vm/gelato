@@ -1,31 +1,25 @@
 use futures::*;
 use iced_futures::futures;
 use irc::client::prelude::{Client, Config};
+use std::sync::Arc;
 
 // Just a little utility function
-pub fn input() -> iced::Subscription<Progress> {
+pub fn input(client: Arc<Option<irc::client::Client>>) -> iced::Subscription<Progress> {
   iced::Subscription::from_recipe(SubscribeIrc {
     some_input: "".to_string(),
+    client: client
   })
 }
 
 pub struct SubscribeIrc {
-  some_input: String
+  some_input: String,
+  client: Arc<Option<irc::client::Client>>
 }
 
-async fn ircfunc() -> Result<irc::client::ClientStream, failure::Error> {
-  let config = Config::load("config.toml").unwrap();
-  let mut client = Client::from_config(config).await?;
-  client.identify()?;
-  // https://doc.rust-lang.org/std/option/enum.Option.html#method.transpose
-  // transpose https://doc.rust-lang.org/std/result/enum.Result.html
-  /*
-  while let Some(message) = stream.next().await.transpose()? {
-    print!("{}", message);
-    };
-  */
-  client.send_privmsg("#mofu", "beepj").unwrap();
-  Ok(client.stream()?)
+async fn ircfunc(client: Arc<Option<irc::client::Client>>) -> Result<irc::client::ClientStream, failure::Error> {
+  //client.send_privmsg("#mofu", "beepj").unwrap();
+  let mut c = client.take();
+  Ok(c.unwrap().stream()?)
 }
 
 // Make sure iced can use our download stream
@@ -50,8 +44,9 @@ where
       SubscribeIrcState::Ready(self.some_input),
       |state| async move {
         match state {
-          SubscribeIrcState::Ready(some_input) => {
-            let result_stream: Result<irc::client::ClientStream, failure::Error> = ircfunc().await;
+          SubscribeIrcState::Ready(_) => {
+            let mut c = self.client.clone();
+            let result_stream: Result<irc::client::ClientStream, failure::Error> = ircfunc(c).await;
             match result_stream {
               Ok(client_stream) => {
                   Some((

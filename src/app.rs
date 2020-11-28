@@ -10,20 +10,17 @@ use crate::view::util;
 use futures::*;
 use iced_futures::futures;
 use irc::client::prelude::{Client, Config};
+use std::sync::Arc;
 
-// A unit struct without resources
-// いかなる資源も持たない構造体
-#[derive(Debug, Clone, Copy)]
-struct Nil;
 
 pub fn main() {
   App::run(Settings::default())
 }
 
 // アプリケーションの状態管理
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct State {
-  client: Option<irc::client::Client>,
+  client: Arc<Option<irc::client::Client>>,
   input: text_input::State,
   input_value: String,
   display_value: String,
@@ -40,7 +37,7 @@ pub struct State {
 impl Default for State {
   fn default() -> Self {
     Self {
-      client: None,
+      client: Default::default(),
       input: text_input::State::new(),
       input_value: String::from(""),
       display_value: String::from(""),
@@ -78,9 +75,9 @@ pub struct SavedState {
 #[cfg(not(target_arch = "wasm32"))]
 impl SavedState {
   // ファイルから状態を読み込む
-  async fn load_irc() -> Result<irc::client::Client, failure::Error> {
-    let config = Config::load("config.toml").unwrap();
-    let mut client = Client::from_config(config).await?;
+  async fn load_irc(mut state: State) -> Result<State, failure::Error> {
+    let config: irc::client::prelude::Config = Config::load("../config.toml").unwrap();
+    let client: irc::client::Client = Client::from_config(config).await?;
     client.identify()?;
     // https://doc.rust-lang.org/std/option/enum.Option.html#method.transpose
     // transpose https://doc.rust-lang.org/std/result/enum.Result.html
@@ -90,7 +87,16 @@ impl SavedState {
       };
     */
     //client.send_privmsg("#mofu", "beepj").unwrap();
-    Ok(client)
+    state.client = Arc::new(Some(client));
+    Ok(state)
+  }
+  async fn load_irc_wrap(state: State) -> State {
+    let nstate = state.clone();
+    let ans =  Self::load_irc(state).await;
+    match ans {
+      Ok(v) => v,
+      Err(_) => nstate,
+    }
   }
   async fn load() -> Result<SavedState, LoadError> {
     let contents = r#"
@@ -158,6 +164,7 @@ impl Application for App {
       App::Loaded(state) => {
         let mut saved = false;
         let mut ircflag = false;
+        let mut ircdoneflag = false;
         match message {
           Message::Saved(_) => {
             state.saving = false;
@@ -165,6 +172,10 @@ impl Application for App {
           }
           Message::IrcStart => {
             ircflag = true;
+          }
+          Message::IrcSet(stateset) => {
+            ircdoneflag = true;
+            *state = stateset;
           }
           Message::Tick(now) => {
             let last_tick = &state.last_tick;
@@ -196,22 +207,10 @@ impl Application for App {
             Message::Saved,
           )
         } else if ircflag {
-          let state_new = State {
-            client: state.client.take(),
-            input: state.input.clone(),
-            input_value: state.input_value.clone(),
-            display_value: state.display_value.clone(),
-            saving: state.saving,
-            dirty: state.dirty,
-            duration: state.duration,
-            last_tick: state.last_tick,
-            progress: 0.0,
-            button: state.button,
-            button2: state.button2,
-            scroll: state.scroll,
-          };
-          //Command::perform(SavedState::load_irc(), Message::none)
-          *self = App::IrcConnecting(state_new);
+          Command::perform(SavedState::load_irc_wrap(state.clone()), Message::IrcSet)
+        } else if ircdoneflag {
+          *self = App::IrcConnecting(state.clone());
+          print!("kiteruyo");
           Command::none()
         } else {
           Command::none()
@@ -219,7 +218,6 @@ impl Application for App {
       }
       App::IrcConnecting(state) => {
         let mut irc_finished = false;
-        // let mut state_next = *state;
         match message {
           Message::IrcProgressed(dmessage) => match dmessage {
             subscribe_irc::Progress::Started => {
@@ -242,48 +240,17 @@ impl Application for App {
           Message::InputChanged(input_text) => {
             state.input_value = input_text;
           }
-          Message::SendText => {
-            
-          }
           _ => {}
         }
         if irc_finished {
-          let state_new = State {
-            client: state.client.take(),
-            input: state.input.clone(),
-            input_value: state.input_value.clone(),
-            display_value: state.display_value.clone(),
-            saving: state.saving,
-            dirty: state.dirty,
-            duration: state.duration,
-            last_tick: state.last_tick,
-            progress: state.progress,
-            button: state.button,
-            button2: state.button2,
-            scroll: state.scroll,
-          };
-          *self = App::IrcFinished(state_new);
+          *self = App::IrcFinished(state.clone());
           Command::perform(Message::change(), Message::IrcFinished)
         } else {
           Command::none()
         }
       }
       App::IrcFinished(state) => {
-        let state_new = State {
-          client: state.client.take(),
-          input: state.input.clone(),
-          input_value: state.input_value.clone(),
-          display_value: state.display_value.clone(),
-          saving: state.saving,
-          dirty: state.dirty,
-          duration: state.duration,
-          last_tick: state.last_tick,
-          progress: state.progress,
-          button: state.button,
-          button2: state.button2,
-          scroll: state.scroll,
-        };
-        *self = App::Loaded(state_new);
+        *self = App::Loaded(state.clone());
         Command::none()
       }
     }
@@ -294,8 +261,10 @@ impl Application for App {
       App::Loaded(State { .. })  => {
         subscribe_time::every(Duration::from_millis(10)).map(Message::Tick)
       }
-      App::IrcConnecting (State { .. }) => {
-        subscribe_irc::input()
+      App::IrcConnecting (state) => {
+        let mut s = state.clone();
+        let mut c = state.client.clone();
+        subscribe_irc::input(c)
           .map(Message::IrcProgressed)
       },
       _ => {

@@ -3,6 +3,9 @@ use std::time::{Instant};
 use crate::model::subscribe_irc;
 use crate::app::*;
 use crate::app::{SavedState, IrcError};
+use futures::*;
+use iced_futures::futures;
+use std::sync::Arc;
 
 // 読み込み済み、保存済み、入力変化した イベントの状態
 #[derive(Debug, Clone)]
@@ -10,6 +13,7 @@ pub enum Message {
   Loaded(Result<SavedState, LoadError>),
   Saved(Result<(), SaveError>),
   InputChanged(String),
+  IrcSet(State),
   SendText,
   Tick(Instant),
   IrcStart,
