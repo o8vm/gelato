@@ -3,6 +3,6 @@ username = "name"
 realname = "Namae Name"
 server = "xxxx"
 port = 6697
-use_ssl = true
+use_tls = true
 encoding = "UTF-8"
 channels = ["#channel"]

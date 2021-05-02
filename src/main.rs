@@ -1,14 +1,13 @@
+extern crate futures;
 extern crate gelato;
 extern crate irc;
-extern crate futures;
-extern crate tokio;
 
+use iced::{Application, Settings};
 
-use iced::{Settings, Application};
-#[tokio::main]
-async fn main() -> Result<(), failure::Error> {
-  let mut sets = Settings::default();
-  sets.default_font = Some(include_bytes!("../fonts/M_PLUS_Rounded_1c/MPLUSRounded1c-Medium_reverted.ttf"));
-  gelato::App::run(sets);
-  Ok(())
+fn main() -> iced::Result {
+    let mut sets = Settings::default();
+    sets.default_font = Some(include_bytes!(
+        "../fonts/M_PLUS_Rounded_1c/MPLUSRounded1c-Medium_reverted.ttf"
+    ));
+    gelato::App::run(sets)
 }

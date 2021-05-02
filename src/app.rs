@@ -1,5 +1,5 @@
 use iced::{
-  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row
+  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row, Clipboard
 };
 use iced_native::Rectangle;
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use crate::model::{subscribe_irc, subscribe_time, message::*};
 use crate::view::util;
 
 
-pub fn main() {
+pub fn main() -> iced::Result {
   App::run(Settings::default())
 }
 
@@ -129,7 +129,7 @@ impl Application for App {
   }
 
   // アプリケーションの更新
-  fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+  fn update(&mut self, message: Self::Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
     match self {
       App::Loading => app_loading_command(self, message),
       App::Loaded(state) => {
