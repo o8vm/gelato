@@ -1,5 +1,5 @@
 use iced::{
-  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row, Clipboard
+  button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row, Clipboard, TextInput
 };
 use iced_native::Rectangle;
 use serde::{Deserialize, Serialize};
@@ -148,6 +148,9 @@ impl Application for App {
             state.duration += now - *last_tick;
             state.last_tick = now;
           }
+          Message::InputChanged(value) => {
+            state.input_value = value;
+          }
           _ => {}
         }
 
@@ -194,6 +197,9 @@ impl Application for App {
           },
           Message::IrcFinished(_) => {
             irc_finished = true;
+          }
+          Message::InputChanged(value) => {
+            state.input_value = value;
           }
           _ => {}
         }
@@ -257,13 +263,23 @@ impl Application for App {
             .on_press(Message::IrcFinished(Ok(())))
             .into()
         };
+        let input = TextInput::new(
+          &mut state.input,
+          "What needs to be done?",
+          &mut state.input_value,
+          Message::InputChanged,
+        )
+        .padding(15)
+        .size(20)
+        .on_submit(Message::CreateSendMessage);
         let content = Column::new()
-          .padding(20)
-          .spacing(20) 
+          .padding(10)
+          .spacing(10) 
           .align_items(Align::Start)
           //.push(duration)
           .push(control)
           .push(control2)
+          .push(input)
           .push( Row::new()
           .align_items(Align::Center)
           .push(scrollable),);

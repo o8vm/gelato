@@ -13,7 +13,8 @@ pub enum Message {
   Tick(Instant),
   IrcStart,
   IrcProgressed(subscribe_irc::Progress),
-  IrcFinished(Result<(), IrcError>)
+  IrcFinished(Result<(), IrcError>),
+  CreateSendMessage
 }
 
 impl Message {
