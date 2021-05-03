@@ -81,12 +81,10 @@ where
                         post_flag,
                         input_value,
                     } => {
-                      if post_flag {
-                          sender.send_privmsg("#test", "mofumofu").unwrap();
-                          message_text.push_str("client mofumofu");
-                      }
                         match client_stream.next().await.transpose() {
                             Ok(Some(chunk)) => {
+                              //sender.send_privmsg("#test", "test").unwrap();
+                              //message_text.push_str("client test");
                                 message_text = chunk.to_string();
                                 Some((
                                     Progress::Advanced(message_text.clone()),

@@ -14,7 +14,8 @@ pub enum Message {
   IrcStart,
   IrcProgressed(subscribe_irc::Progress),
   IrcFinished(Result<(), IrcError>),
-  PostMessage
+  PostMessage,
+  None(())
 }
 
 impl Message {
