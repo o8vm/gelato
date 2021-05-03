@@ -5,6 +5,7 @@ extern crate futures;
 extern crate irc;
 
 pub mod model;
-pub mod view;
+pub mod style;
+pub mod util;
 pub mod app;
 pub use app::App;

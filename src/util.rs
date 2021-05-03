@@ -40,7 +40,7 @@ let control: Element<_> = {
 */
 pub fn filter(s: &str) -> &str {
   let v: Vec<&str> = s.split(' ').collect();
-  if (v[1] == "PONG") {
+  if v[1] == "PONG" || v[0] == "PING" {
     ""
   } else {
     s

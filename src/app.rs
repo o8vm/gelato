@@ -1,12 +1,12 @@
 use iced::{
   button, text_input, Align, Application, Button, Column, Command, Container, Element, Length, scrollable, Scrollable, Settings, Subscription, Text, Row, Clipboard, TextInput
 };
-use iced_native::Rectangle;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-use crate::model::{subscribe_irc, subscribe_time, message::*};
-use crate::view::util;
+use crate::model::{subscribe_irc, message::*};
+use crate::util;
+use crate::style;
 
 
 pub fn main() -> iced::Result {
@@ -18,14 +18,16 @@ pub fn main() -> iced::Result {
 pub struct State {
   input_state: text_input::State,
   input_value: String,
+  connecting_flag: bool,
   display_value: String,
   saving: bool,
   dirty: bool,
   duration: Duration,
   last_tick: Instant,
   progress: f32,
-  irc_start_button_state: button::State,
-  irc_stop_button_state: button::State,
+  post_flag: bool,
+  irc_button_state: button::State,
+  post_button_state: button::State,
   scrollable_state: scrollable::State,
 }
 
@@ -34,14 +36,16 @@ impl Default for State {
     Self {
       input_state: text_input::State::new(),
       input_value: String::from(""),
+      connecting_flag : false,
       display_value: String::from(""),
       saving: true,
       dirty: true,
       duration: Duration::default(),
       last_tick: std::time::Instant::now(),
       progress: 0.0,
-      irc_start_button_state: button::State::new(),
-      irc_stop_button_state: button::State::new(),
+      post_flag : false,
+      irc_button_state: button::State::new(),
+      post_button_state: button::State::new(),
       scrollable_state: scrollable::State::new()
     }
   }
@@ -72,7 +76,7 @@ impl SavedState {
   async fn load() -> Result<SavedState, LoadError> {
     let contents = r#"
         {
-            "display_value": "Test for dispplay_value init",
+            "display_value": "Push Start IRC button",
             "input_value": "43"
         }"#;
     serde_json::from_str(&contents).map_err(|_| LoadError::FormatError)
@@ -178,9 +182,10 @@ impl Application for App {
         }
       }
       App::IrcConnecting(state) => {
+        state.connecting_flag = true;
         let mut irc_finished = false;
         match message {
-          Message::IrcProgressed(dmessage) => match dmessage {
+          Message::IrcProgressed(progress_state) => match progress_state {
             subscribe_irc::Progress::Started => {
               state.progress = 0.0;
             }
@@ -197,9 +202,13 @@ impl Application for App {
           },
           Message::IrcFinished(_) => {
             irc_finished = true;
+            state.connecting_flag = false;
           }
           Message::InputChanged(value) => {
             state.input_value = value;
+          },
+          Message::PostMessage => {
+            state.post_flag = true;
           }
           _ => {}
         }
@@ -219,11 +228,11 @@ impl Application for App {
   // サブスクリプションの登録
   fn subscription(&self) -> Subscription<Message> {
     match self {
-      App::Loaded(State { .. })  => {
+      /*App::Loaded(State { .. })  => {
         subscribe_time::every(Duration::from_millis(10)).map(Message::Tick)
-      }
-      App::IrcConnecting (State{ .. }) => {
-        subscribe_irc::input("")
+      }*/
+      App::IrcConnecting (State{ post_flag, input_value, .. }) => {
+        subscribe_irc::input(*post_flag, input_value, "")
           .map(Message::IrcProgressed)
       },
       _ => {
@@ -253,33 +262,42 @@ impl Application for App {
             .height(Length::Fill)
             .push(Text::new(state.display_value.to_string()));
         //static b:button::State = *button;
-        let control: Element<_> = {
-          Button::new(&mut state.irc_start_button_state, Text::new("Start IRC"))
-            .on_press(Message::IrcStart)
+
+        let start_irc_button_control:Element<_> = {
+          let (label, toggle, style) =
+            if state.connecting_flag { ("Stop IRC", Message::IrcFinished(Ok(())), style::Button::Stop) }
+            else { ("Start IRC", Message::IrcStart, style::Button::Start) };
+          Button::new(&mut state.irc_button_state, Text::new(label))
+            .style(style)
+            .on_press(toggle)
             .into()
         };
-        let control2: Element<_> = {
-          Button::new(&mut state.irc_stop_button_state, Text::new("Stop IRC"))
-            .on_press(Message::IrcFinished(Ok(())))
+        let post_button: Element<_> = {
+          let (label, toggle, style) = ("Post", Message::PostMessage, style::Button::Post);
+          Button::new(&mut state.post_button_state, Text::new(label).size(25))
+            .style(style)
+            .on_press(toggle)
             .into()
         };
-        let input = TextInput::new(
+        let input_box = TextInput::new(
           &mut state.input_state,
-          "What needs to be done?",
+          "Input text...",
           &mut state.input_value,
           Message::InputChanged,
         )
-        .padding(15)
-        .size(20)
-        .on_submit(Message::CreateSendMessage);
+        .padding(10)
+        .size(15)
+        .on_submit(Message::PostMessage);
+
         let content = Column::new()
           .padding(10)
-          .spacing(10) 
-          .align_items(Align::Start)
-          //.push(duration)
-          .push(control)
-          .push(control2)
-          .push(input)
+          .spacing(10)
+          .align_items(Align::Start)          //.push(duration)
+          .push(start_irc_button_control)
+          .push(Row::new()
+            .push(input_box)
+            .push(post_button)
+          )
           .push( Row::new()
           .align_items(Align::Center)
           .push(scrollable_state),);
