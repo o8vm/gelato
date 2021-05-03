@@ -93,8 +93,6 @@ impl IrcClient {
 impl SavedState {
     // ファイルから状態を読み込む
     async fn load() -> Result<SavedState, LoadError> {
-      let tmp = IrcClient::get_sender().await;
-      let tmp2 = tmp.unwrap();
         let contents = r#"
         {
             "display_value": "Push Start IRC button",
@@ -243,7 +241,7 @@ impl Application for App {
                   let call = async move {
                     match IrcClient::get_sender().await {
                       Ok(sender) => {
-                        //sender.send_privmsg("#test", "momomomo").unwrap();
+                        sender.send_privmsg("#test", "momomomo").unwrap();
                       }
                       Err(msg) => println!("failure: {}", msg)
                     }
