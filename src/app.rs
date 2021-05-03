@@ -16,7 +16,7 @@ pub fn main() -> iced::Result {
 // アプリケーションの状態管理
 #[derive(Debug, Clone)]
 pub struct State {
-  input: text_input::State,
+  input_state: text_input::State,
   input_value: String,
   display_value: String,
   saving: bool,
@@ -24,15 +24,15 @@ pub struct State {
   duration: Duration,
   last_tick: Instant,
   progress: f32,
-  button: button::State,
-  button2: button::State,
-  scroll: scrollable::State,
+  irc_start_button_state: button::State,
+  irc_stop_button_state: button::State,
+  scrollable_state: scrollable::State,
 }
 
 impl Default for State {
   fn default() -> Self {
     Self {
-      input: text_input::State::new(),
+      input_state: text_input::State::new(),
       input_value: String::from(""),
       display_value: String::from(""),
       saving: true,
@@ -40,9 +40,9 @@ impl Default for State {
       duration: Duration::default(),
       last_tick: std::time::Instant::now(),
       progress: 0.0,
-      button: button::State::new(),
-      button2: button::State::new(),
-      scroll: scrollable::State::new()
+      irc_start_button_state: button::State::new(),
+      irc_stop_button_state: button::State::new(),
+      scrollable_state: scrollable::State::new()
     }
   }
 }
@@ -248,23 +248,23 @@ impl Application for App {
           seconds % MINUTE
         )).size(8);
         // Scrollable<scrollable::State> => Error
-        let scrollable:Scrollable<Message> = Scrollable::new(&mut state.scroll)
+        let scrollable_state:Scrollable<Message> = Scrollable::new(&mut state.scrollable_state)
             .width(Length::Fill)
             .height(Length::Fill)
             .push(Text::new(state.display_value.to_string()));
         //static b:button::State = *button;
         let control: Element<_> = {
-          Button::new(&mut state.button, Text::new("Start IRC"))
+          Button::new(&mut state.irc_start_button_state, Text::new("Start IRC"))
             .on_press(Message::IrcStart)
             .into()
         };
         let control2: Element<_> = {
-          Button::new(&mut state.button2, Text::new("Stop IRC"))
+          Button::new(&mut state.irc_stop_button_state, Text::new("Stop IRC"))
             .on_press(Message::IrcFinished(Ok(())))
             .into()
         };
         let input = TextInput::new(
-          &mut state.input,
+          &mut state.input_state,
           "What needs to be done?",
           &mut state.input_value,
           Message::InputChanged,
@@ -282,7 +282,7 @@ impl Application for App {
           .push(input)
           .push( Row::new()
           .align_items(Align::Center)
-          .push(scrollable),);
+          .push(scrollable_state),);
         Container::new(content)
           .width(Length::FillPortion(2))
           .height(Length::Fill)
