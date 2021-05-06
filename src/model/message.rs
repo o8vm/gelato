@@ -1,5 +1,4 @@
 use iced::{Command};
-use std::time::{Instant};
 use crate::model::subscribe_irc;
 use crate::app::*;
 use crate::app::{SavedState, IrcError};
@@ -10,7 +9,6 @@ pub enum Message {
   Loaded(Result<SavedState, LoadError>),
   Saved(Result<(), SaveError>),
   InputChanged(String),
-  Tick(Instant),
   IrcStart,
   IrcProgressed(subscribe_irc::Progress),
   IrcFinished(Result<(), IrcError>),

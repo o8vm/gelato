@@ -4,15 +4,17 @@ use iced::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    ptr::null,
-    time::{Duration, Instant},
+    time::{Duration},
 };
 
 use crate::model::{message::*, subscribe_irc};
 use crate::style;
 use crate::util;
+
+// IRCクライアントをapp.rsで呼び出すなら必要。
 use irc::client::prelude::{Client, Config, Sender};
 
+// iced 2.0ぐらいから、iced::Resultが使えるようになった。
 pub fn main() -> iced::Result {
     App::run(Settings::default())
 }
@@ -27,8 +29,6 @@ pub struct State {
     saving: bool,
     dirty: bool,
     duration: Duration,
-    last_tick: Instant,
-    progress: f32,
     post_flag: bool,
     irc_button_state: button::State,
     post_button_state: button::State,
@@ -46,8 +46,6 @@ impl Default for State {
             saving: true,
             dirty: true,
             duration: Duration::default(),
-            last_tick: std::time::Instant::now(),
-            progress: 0.0,
             post_flag: false,
             irc_button_state: button::State::new(),
             post_button_state: button::State::new(),
@@ -63,30 +61,15 @@ impl State {
         default.display_value = String::from(s.to_string());
         default
     }
-    pub fn new_progress(v: f32) -> Self {
-        let mut default: State = State::default();
-        default.progress = v;
-        default
-    }
 }
-// 状態の内、保存する情報のモデル
+
+// 下記の実装を元に持ってこられたもの
+// https://github.com/hecrj/iced/tree/master/examples/todos
+// アプリケーション起動時に設定ファイルの読み込みをする仕組みのためにSavedStateが存在する。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedState {
     pub input_value: String,
     pub display_value: String
-}
-
-struct IrcClient {
-    client_stream: irc::client::ClientStream,
-    sender: irc::client::Sender,
-}
-impl IrcClient {
-    async fn get_sender() -> Result<irc::client::Sender, failure::Error> {
-        let config = Config::load("config.toml").unwrap();
-        let mut client = Client::from_config(config).await?;
-        client.identify()?;
-        Ok(client.sender())
-    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -121,11 +104,29 @@ pub enum SaveError {
     WriteError,
     FormatError,
 }
+
 #[derive(Debug, Clone)]
 pub enum IrcError {
     IrcError,
 }
 
+// 試験的実装。IrcClientを取りまとめるstructを作ってみた。
+struct IrcClient {
+  client_stream: irc::client::ClientStream,
+  sender: irc::client::Sender,
+}
+
+impl IrcClient {
+  async fn get_sender() -> Result<irc::client::Sender, failure::Error> {
+      let config = Config::load("config.toml").unwrap();
+      let mut client = Client::from_config(config).await?;
+      client.identify()?;
+      Ok(client.sender())
+  }
+}
+
+// アプリケーションの状態。これが大元。Stateを内包する設計になっている。
+// この設計が良いかどうかは若干考えた方がいい。色々と不便の原因にはなっている。
 pub enum App {
     Loading,
     Loaded(State),
@@ -133,6 +134,7 @@ pub enum App {
     IrcFinished(State),
 }
 
+// Iced Applicationライブラリが要求する実装
 impl Application for App {
     type Executor = iced::executor::Default;
     type Message = Message;
@@ -157,11 +159,17 @@ impl Application for App {
         message: Self::Message,
         _clipboard: &mut Clipboard,
     ) -> Command<Self::Message> {
+        // アプリケーションの種類状態でのマッチ
         match self {
+            // アプリケーション初期化中
             App::Loading => app_loading_command(self, message),
+
+            // アプリケーション初期化完了時
             App::Loaded(state) => {
                 let mut saved = false;
                 let mut ircflag = false;
+
+                // アプリケーションが受け取ったメッセージごとでフラグを書き換える。
                 match message {
                     Message::Saved(_) => {
                         state.saving = false;
@@ -170,20 +178,19 @@ impl Application for App {
                     Message::IrcStart => {
                         ircflag = true;
                     }
-                    Message::Tick(now) => {
-                        let last_tick = &state.last_tick;
-                        state.duration += now - *last_tick;
-                        state.last_tick = now;
-                    }
                     Message::InputChanged(value) => {
+                        println!("Inputを{}に書き換えました", value);
                         state.input_value = value;
                     }
                     _ => {}
                 }
 
+                // フラグに基づき、最終的なコマンドを設定する。
+                // TODOサンプルを元に作成しているため、saved, dirtyはtodoからきている。使われていないものもある。
                 if !saved {
                     state.dirty = true;
                 }
+
                 if state.dirty && !state.saving {
                     state.dirty = false;
                     state.saving = true;
@@ -195,25 +202,26 @@ impl Application for App {
                         .save(),
                         Message::Saved,
                     )
-                } else if ircflag {
+                  // IRCが開始されたら、selfをIRCConnectingに強制上書きする。
+                  } else if ircflag {
                     let mut state_edit = state.clone();
-                    state_edit.progress = 0.0;
                     *self = App::IrcConnecting(state_edit);
                     Command::none()
                 } else {
                     Command::none()
                 }
             }
+            // IRC接続状態の時
             App::IrcConnecting(state) => {
                 state.connecting_flag = true;
                 let mut irc_finished = false;
                 let mut posted = false;
                 match message {
+                    // Message::IrcProgressedは、subscription関数のmapで渡されている関数
                     Message::IrcProgressed(progress_state) => match progress_state {
-                        subscribe_irc::Progress::Started => {
-                            state.progress = 0.0;
-                        }
+                        // model/subscribe_irc.rsで実装されているProgressから結果のmessage_textが返却される。
                         subscribe_irc::Progress::Advanced(message_text) => {
+                            // メッセージのフィルタリング
                             let filtered_text: &str = util::filter(&message_text);
                             state.display_value.push_str(filtered_text);
                         }
@@ -223,12 +231,14 @@ impl Application for App {
                         subscribe_irc::Progress::Errored => {
                             irc_finished = true;
                         }
+                        _ => {}
                     },
                     Message::IrcFinished(_) => {
                         irc_finished = true;
                         state.connecting_flag = false;
                     }
                     Message::InputChanged(value) => {
+                        println!("Inputを{}に書き換えました", value);
                         state.input_value = value;
                     }
                     Message::PostMessage => {
@@ -241,7 +251,8 @@ impl Application for App {
                   let call = async move {
                     match IrcClient::get_sender().await {
                       Ok(sender) => {
-                        sender.send_privmsg("#test", "momomomo").unwrap();
+                        println!("toutatushiteru");
+                        sender.send_privmsg("#test", "test value dayo").unwrap();
                       }
                       Err(msg) => println!("failure: {}", msg)
                     }
@@ -263,21 +274,36 @@ impl Application for App {
             }
         }
     }
-    // サブスクリプションの登録
+
+    // サブスクリプションの登録。
+    // selfはアプリケーションのenumのため、必要に応じてStateの中身を取り出す。
     fn subscription(&self) -> Subscription<Message> {
         match self {
-            /*App::Loaded(State { .. })  => {
-              subscribe_time::every(Duration::from_millis(10)).map(Message::Tick)
-            }*/
+            // IRCと接続している時の非同期通信を設定。
+            // 具体的な実装は、model/subscribe_irc.rsで担当する。
+            // なんとかして、GUIからの入力値を渡そうとしている。
+            // GUIからの入力値をIRCサーバーに送信する方法は2種類考えられる。
+            // 1. app.rs内部で送信してしまう。
+            // 2. model/subscribe_irc.rsになんとかしてGUIからの入力値ならびに送信フラグを渡す。
+
+            // 1.を実現したいのであれば、何らかの方法でclientオブジェクトをapp.rsが保持しないといけないが、できていない。
+            // 2.を実現したのであれば、何らかの方法でsubscribe_ircにGUIからの入力値を渡さないといけない。
+            // subscribe_irc.rs内部で作成したクライアントからsendすること自体は可能であることを確認した。
             App::IrcConnecting(State {
                 post_flag,
                 input_value,
                 ..
             }) => subscribe_irc::input(*post_flag, input_value, "").map(Message::IrcProgressed),
+            // input関数への受け渡しは適当にいろいろ試しているため、何も考えていない。
+
+            // IRCと接続時以外は特に何もしない。
             _ => Subscription::none(),
         }
     }
-    // アプリケーションの表示を操作
+
+    // 更新された時に呼び出される描画関数
+    // いつか部分ごとに関数化&外部ファイル化したいと考えているが、現状はここに全部書いている。
+    // CSSのような装飾はstyle.rsで設定している。
     fn view(&mut self) -> Element<Self::Message> {
         match self {
             App::Loading => util::loading_message(),

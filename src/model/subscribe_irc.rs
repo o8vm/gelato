@@ -8,6 +8,7 @@ pub fn input<T: ToString>(
     input_value: &str,
     some_input: T,
 ) -> iced::Subscription<Progress> {
+  println!("input関数の内部ではinput_valueは、{}", input_value.to_string());
     iced::Subscription::from_recipe(SubscribeIrc {
         post_flag: post_flag,
         input_value: input_value.to_string(),
@@ -58,20 +59,23 @@ where
             },
             |state| async move {
                 match state {
-                    SubscribeIrcState::Ready { .. } => match get_irc_client().await {
+                    SubscribeIrcState::Ready { input_value, .. } => match get_irc_client().await {
                         Ok(IrcClient {
                             client_stream,
                             sender,
-                        }) => Some((
+                        }) => {
+                          println!("|state| async move内部ではinput_valueは、{}", input_value.to_string());
+                          Some((
                             Progress::Started,
                             SubscribeIrcState::Incoming {
                                 client_stream,
                                 sender,
                                 message_text: String::from(""),
                                 post_flag: false,
-                                input_value: String::from(""),
-                            },
-                        )),
+                                input_value: input_value,
+                            }
+                        ))
+                      }
                         Err(_) => Some((Progress::Errored, SubscribeIrcState::Finished)),
                     },
                     SubscribeIrcState::Incoming {
@@ -83,6 +87,7 @@ where
                     } => {
                         match client_stream.next().await.transpose() {
                             Ok(Some(chunk)) => {
+                              println!("Client Stream Nextの内部ではinput_valueは、{}", input_value.to_string());
                               //sender.send_privmsg("#test", "test").unwrap();
                               //message_text.push_str("client test");
                                 message_text = chunk.to_string();
