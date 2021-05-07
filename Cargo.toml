@@ -14,9 +14,9 @@ edition = "2018"
 [dependencies]
 irc = { version = "0.15" }
 futures = "0.3.14"
-tokio = "1.5.0"
 async-std = "1.9.0"
 failure = "0.1.8"
+anyhow = "1.0"
 
 iced = { version = "0.3", features = ["async-std", "tokio"] }
 iced_native = "0.4.0"

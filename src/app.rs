@@ -7,12 +7,25 @@ use std::{
     time::{Duration},
 };
 
+// StructでClientを保持するのに必要
+/* by Tatsuya Kawanoさん
+  1. Clone 実装は必要だけど、 ClientStream の実体は1つにしたい。（複数の所有者で共有させたい）
+  2. 非同期ランタイムにもよるが、多くのランタイムはマルチスレッド形式なので、マルチスレッド対応が必要そう
+  3. ClientStream はミュータブル（可変）でないとならない。（なぜなら next() を呼ぶ際に &mut self が要求されるから）
+  https://github.com/usagi/rust-memory-container-cs
+ */
+use std::sync::{Arc};
+use futures::lock::Mutex;
+
 use crate::model::{message::*, subscribe_irc};
 use crate::style;
 use crate::util;
 
+use anyhow::Result;
+
 // IRCクライアントをapp.rsで呼び出すなら必要。
 use irc::client::prelude::{Client, Config, Sender};
+use irc::error::Error;
 
 // iced 2.0ぐらいから、iced::Resultが使えるようになった。
 pub fn main() -> iced::Result {
@@ -33,7 +46,8 @@ pub struct State {
     irc_button_state: button::State,
     post_button_state: button::State,
     scrollable_state: scrollable::State,
-    sender: Option<Box<irc::client::Sender>>,
+    sender: Option<Arc<Mutex<irc::client::Sender>>>,
+    client_stream: Option<Arc<Mutex<irc::client::ClientStream>>>,
 }
 
 impl Default for State {
@@ -51,6 +65,7 @@ impl Default for State {
             post_button_state: button::State::new(),
             scrollable_state: scrollable::State::new(),
             sender: None,
+            client_stream: None
         }
     }
 }
@@ -81,6 +96,15 @@ impl SavedState {
             "display_value": "Push Start IRC button",
             "input_value": "43"
         }"#;
+        /*let config = Config::load("config.toml").unwrap();
+        let client = Client::from_config(config).await?;
+        client.identify()?;
+        let sender = client.sender();
+        sender.send_privmsg("#test", "test value dayo").unwrap();
+        //client.identify().unwrap();
+        //let sender = client.sender();
+        //sender.send_privmsg("#test", "test value dayo").unwrap();
+        Ok(())*/
         serde_json::from_str(&contents).map_err(|_| LoadError::FormatError)
     }
     // ファイルに状態を保存
@@ -96,13 +120,28 @@ pub enum LoadError {
     FormatError,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum SaveError {
     // 設定ファイル保存時のエラー状態名
     DirectoryError,
     FileError,
     WriteError,
     FormatError,
+    Io(irc::error::Error),
+}
+
+// Message構造体が引数にResult<(), Error>を使用するものがある。
+// Message構造体はCloneできる必要があるため、引数にReuslt<(), Error>があるなら、これもCloneの必要性がある。
+impl Clone for SaveError {
+  fn clone(&self) -> Self {
+      match *self {
+        SaveError::DirectoryError => SaveError::DirectoryError,
+        SaveError::FileError => SaveError::FileError,
+        SaveError::WriteError => SaveError::WriteError,
+        SaveError::FormatError => SaveError::FormatError,
+        SaveError::Io(ref err) => SaveError::Io(irc::error::Error::AsyncChannelClosed),
+      }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -111,22 +150,22 @@ pub enum IrcError {
 }
 
 // 試験的実装。IrcClientを取りまとめるstructを作ってみた。
-struct IrcClient {
+pub struct IrcClient {
   client_stream: irc::client::ClientStream,
   sender: irc::client::Sender,
 }
 
 impl IrcClient {
-  async fn get_sender() -> Result<irc::client::Sender, failure::Error> {
+  async fn get_sender() -> Result<IrcClient, failure::Error> {
       let config = Config::load("config.toml").unwrap();
       let mut client = Client::from_config(config).await?;
       client.identify()?;
-      Ok(client.sender())
+      Ok(IrcClient{ client_stream: client.stream()?, sender: client.sender()})
   }
 }
 
-// アプリケーションの状態。これが大元。Stateを内包する設計になっている。
-// この設計が良いかどうかは若干考えた方がいい。色々と不便の原因にはなっている。
+// アプリケーションの状態。これが大元。ライブラリからも要求される。Stateを内包する設計になっている。
+// このenumの分け方とStateの分け方の設計が良いかどうかは若干考えた方がいい。色々と不便の原因にはなっている。
 pub enum App {
     Loading,
     Loaded(State),
@@ -162,8 +201,45 @@ impl Application for App {
         // アプリケーションの種類状態でのマッチ
         match self {
             // アプリケーション初期化中
-            App::Loading => app_loading_command(self, message),
+            App::Loading => {
+              match message {
+                Message::Loaded(Ok(saved_state)) => {
+                  // ここにprintln!を書くと実行されるが、
 
+                  let mut current_state = State::default();//State::new_display_val(saved_state.display_value);
+                  async {
+                    // ここが実行されない。
+                    // https://qiita.com/qnighy/items/05c38f73ef4b9e487ced
+                    /*match IrcClient::get_sender().await {
+                      Ok(IrcClient{ client_stream, sender}) => {
+                        println!("toutatushiteru");
+                        current_state.client_stream = Some(Arc::new(Mutex::new(client_stream)));
+                        current_state.sender = Some(Arc::new(Mutex::new(sender)));
+                      }
+                      Err(msg) => println!("failure: {}", msg)
+                    };
+                    let sender_original = current_state.sender.as_ref().unwrap();
+                    {
+                      let sender_clone = sender_original.clone();
+                      let mut sender = sender_clone.lock().unwrap();
+                      sender.send_privmsg("#test", "test value dayo").unwrap();
+                    }*/
+                    let config = Config::load("config.toml").unwrap();
+                    let mut client = Client::from_config(config).await.unwrap();
+                    client.identify().unwrap();
+                    let sender = client.sender();
+                    sender.send_privmsg("#test", "test value dayo").unwrap();
+                  };
+                  *self = App::Loaded(current_state);
+                }
+                Message::Loaded(Err(_)) => {
+                  *self = App::Loaded(State::default());
+                }
+                _ => {}
+              }
+              Command::none()
+              //app_loading_command(self, message)
+            }
             // アプリケーション初期化完了時
             App::Loaded(state) => {
                 let mut saved = false;
@@ -194,14 +270,16 @@ impl Application for App {
                 if state.dirty && !state.saving {
                     state.dirty = false;
                     state.saving = true;
-                    Command::perform(
+                    // いったん何もしないことにする。
+                    /*Command::perform(
                         SavedState {
                             input_value: state.input_value.clone(),
                             display_value: state.display_value.clone(),
                         }
                         .save(),
                         Message::Saved,
-                    )
+                    )*/
+                    Command::none()
                   // IRCが開始されたら、selfをIRCConnectingに強制上書きする。
                   } else if ircflag {
                     let mut state_edit = state.clone();
@@ -250,15 +328,12 @@ impl Application for App {
                 if posted {
                   let call = async move {
                     match IrcClient::get_sender().await {
-                      Ok(sender) => {
+                      Ok(IrcClient{ client_stream, sender}) => {
                         println!("toutatushiteru");
                         sender.send_privmsg("#test", "test value dayo").unwrap();
                       }
                       Err(msg) => println!("failure: {}", msg)
                     }
-                    //let config = Config::load("config.toml").unwrap();
-                    //let mut client = Client::from_config(config).await.unwrap();
-                    //client.identify().unwrap();
                   };
                   Command::perform(call, Message::None)
                 } else if irc_finished {

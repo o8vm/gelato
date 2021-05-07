@@ -2,8 +2,14 @@ use iced::{Command};
 use crate::model::subscribe_irc;
 use crate::app::*;
 use crate::app::{SavedState, IrcError};
+use anyhow::Result;
 
 // 読み込み済み、保存済み、入力変化した イベントの状態
+// TODO: クライアントの作成時awaitの非同期処理が走る。
+// ResultがMessageに渡されるが、MessageはCloneする必要がある。
+// irc::error::Error、継承元のio::Error, failure::Error, またanyhowいずれもclone実装がない
+// Box化するのが定番のようだが、Box化してしまうと.await?が使えないように感じている。
+
 #[derive(Debug, Clone)]
 pub enum Message {
   Loaded(Result<SavedState, LoadError>),
@@ -24,8 +30,10 @@ impl Message {
 
 pub fn app_loading_command(app: &mut App, message: Message) -> Command<Message> {
   match message {
-    Message::Loaded(Ok(state)) => {
-      *app = App::Loaded(State::new_display_val(state.display_value));
+    // saved_stateであることに注意すること。
+    Message::Loaded(Ok(saved_state)) => {
+      *app = App::Loaded(State::default());
+      // *app = App::Loaded(State::new_display_val(saved_state.display_value));
     }
     Message::Loaded(Err(_)) => {
       *app = App::Loaded(State::default());
