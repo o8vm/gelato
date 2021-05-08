@@ -3,9 +3,6 @@ use iced::{
     Container, Element, Length, Row, Scrollable, Settings, Subscription, Text, TextInput,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    time::{Duration},
-};
 
 // StructでClientを保持するのに必要
 /* by Tatsuya Kawanoさん
@@ -15,18 +12,14 @@ use std::{
   https://github.com/usagi/rust-memory-container-cs
  */
 use std::sync::{Arc};
-use futures::lock::Mutex;
-use futures::*;
 
 use crate::model::{message::*, subscribe_irc};
 use crate::style;
 use crate::util;
 
-use anyhow::Result;
 
 // IRCクライアントをapp.rsで呼び出すなら必要。
 use irc::client::{self, prelude::{Client, Config, Sender}};
-use irc::error::Error;
 
 // iced 2.0ぐらいから、iced::Resultが使えるようになった。
 pub fn main() -> iced::Result {
@@ -42,8 +35,7 @@ pub struct State {
     display_value: String,
     saving: bool,
     dirty: bool,
-    duration: Duration,
-    post_flag: bool,
+    current_channel: String,
     irc_button_state: button::State,
     post_button_state: button::State,
     scrollable_state: scrollable::State,
@@ -60,8 +52,7 @@ impl Default for State {
             display_value: String::from(""),
             saving: true,
             dirty: true,
-            duration: Duration::default(),
-            post_flag: false,
+            current_channel: String::from(""),
             irc_button_state: button::State::new(),
             post_button_state: button::State::new(),
             scrollable_state: scrollable::State::new(),
@@ -97,15 +88,6 @@ impl SavedState {
             "display_value": "Push Start IRC button",
             "input_value": "43"
         }"#;
-        /*let config = Config::load("config.toml").unwrap();
-        let client = Client::from_config(config).await?;
-        client.identify()?;
-        let sender = client.sender();
-        sender.send_privmsg("#test", "test value dayo").unwrap();
-        //client.identify().unwrap();
-        //let sender = client.sender();
-        //sender.send_privmsg("#test", "test value dayo").unwrap();
-        Ok(())*/
         serde_json::from_str(&contents).map_err(|_| LoadError::FormatError)
     }
     // ファイルに状態を保存
@@ -121,28 +103,13 @@ pub enum LoadError {
     FormatError,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SaveError {
     // 設定ファイル保存時のエラー状態名
     DirectoryError,
     FileError,
     WriteError,
-    FormatError,
-    Io(irc::error::Error),
-}
-
-// Message構造体が引数にResult<(), Error>を使用するものがある。
-// Message構造体はCloneできる必要があるため、引数にReuslt<(), Error>があるなら、これもCloneの必要性がある。
-impl Clone for SaveError {
-  fn clone(&self) -> Self {
-      match *self {
-        SaveError::DirectoryError => SaveError::DirectoryError,
-        SaveError::FileError => SaveError::FileError,
-        SaveError::WriteError => SaveError::WriteError,
-        SaveError::FormatError => SaveError::FormatError,
-        SaveError::Io(ref err) => SaveError::Io(irc::error::Error::AsyncChannelClosed),
-      }
-  }
+    FormatError
 }
 
 #[derive(Debug, Clone)]
@@ -205,26 +172,13 @@ impl Application for App {
             App::Loading => {
               match message {
                 Message::Loaded(Ok(saved_state)) => {
-                  // https://qiita.com/qnighy/items/05c38f73ef4b9e487ced
-                  // https://qiita.com/kbone/items/7f7847376fac78b0ebcb
                   let mut current_state = State::default();
 
                   // futures::executor::block_on関数を使わないと、asyncの括弧の中が実行されない。
                   futures::executor::block_on(async {
-                    let mut ircClient = IrcClient::get_client().await.expect("get_client()");
-                    let sender = ircClient.sender;
-                    let mut client_stream = ircClient.client_stream;
-                    // whileがある時実行される。
-                    // sender.send_privmsg("#test", "test value dayo").unwrap();
-                    current_state.client_stream = Some(Arc::new(futures::lock::Mutex::new(client_stream)));
-                    current_state.sender = Some(Arc::new(futures::lock::Mutex::new(sender)));
-
-                    /* 出力される
-                    while let Some(message) = client_stream.next().await.transpose().unwrap() {
-                      print!("{}", message);
-                      sender.send_privmsg("#test", "Hi!").unwrap();
-                    }
-                    */
+                    let irc_client_struct = IrcClient::get_client().await.expect("get_client()");
+                    current_state.client_stream = Some(Arc::new(futures::lock::Mutex::new(irc_client_struct.client_stream)));
+                    current_state.sender = Some(Arc::new(futures::lock::Mutex::new(irc_client_struct.sender)));
                   });
                   *self = App::Loaded(current_state);
                 }
@@ -234,7 +188,6 @@ impl Application for App {
                 _ => {}
               }
               Command::none()
-              //app_loading_command(self, message)
             }
             // アプリケーション初期化完了時
             App::Loaded(state) => {
@@ -251,7 +204,6 @@ impl Application for App {
                         ircflag = true;
                     }
                     Message::InputChanged(value) => {
-                        println!("Inputを{}に書き換えました", value);
                         state.input_value = value;
                     }
                     _ => {}
@@ -279,8 +231,7 @@ impl Application for App {
 
                   // IRCが開始されたら、selfをIRCConnectingに強制上書きする。
                   } else if ircflag {
-                    let mut state_edit = state.clone();
-                    *self = App::IrcConnecting(state_edit);
+                    *self = App::IrcConnecting(state.clone());
                     Command::none()
                 } else {
                     Command::none()
@@ -291,6 +242,7 @@ impl Application for App {
                 state.connecting_flag = true;
                 let mut irc_finished = false;
                 let mut posted = false;
+                let mut input_word = String::from("");
                 match message {
                     // Message::IrcProgressedは、subscription関数のmapで渡されている関数
                     Message::IrcProgressed(progress_state) => match progress_state {
@@ -313,22 +265,21 @@ impl Application for App {
                         state.connecting_flag = false;
                     }
                     Message::InputChanged(value) => {
-                        println!("Inputを{}に書き換えました 2", value);
                         state.input_value = value;
                     }
                     Message::PostMessage => {
                       posted = true;
+                      input_word.push_str(&state.input_value.clone());
+                      state.input_value = String::from("");
                     }
                     _ => {}
                 }
 
-                  if posted {
-                    println!("post 有効です");
-                    let mut sender_original = Arc::clone(&state.sender.as_ref().unwrap());
+                  if posted && !input_word.is_empty() {
+                    let sender_original = Arc::clone(&state.sender.as_ref().unwrap());
                     let call = async move {
-                      println!("読んでいます");
-                      let mut sender = sender_original.lock().await;
-                      (*sender).send_privmsg("#test", "test input").unwrap();
+                      let sender = sender_original.lock().await;
+                      (*sender).send_privmsg("#test", input_word).unwrap();
                     };
 
                   Command::perform(call, Message::None)
@@ -363,13 +314,11 @@ impl Application for App {
             // 2.を実現したのであれば、何らかの方法でsubscribe_ircにGUIからの入力値を渡さないといけない。
             // subscribe_irc.rs内部で作成したクライアントからsendすること自体は可能であることを確認した。
             App::IrcConnecting(State {
-                post_flag,
-                input_value,
                 client_stream,
                 ..
             }) => {
               let mut client_stream = client_stream.as_ref();
-              subscribe_irc::input(*post_flag, input_value, client_stream, "").map(Message::IrcProgressed)
+              subscribe_irc::input( client_stream, "").map(Message::IrcProgressed)
             },
             // input関数への受け渡しは適当にいろいろ試しているため、何も考えていない。
 
@@ -385,24 +334,12 @@ impl Application for App {
         match self {
             App::Loading => util::loading_message(),
             App::Loaded(state) | App::IrcFinished(state) | App::IrcConnecting(state) => {
-                const MINUTE: u64 = 60;
-                const HOUR: u64 = 60 * MINUTE;
-                let seconds = state.duration.as_secs();
-                let duration = Text::new(format!(
-                    "{:0>2}:{:0>2}:{:0>2}",
-                    seconds / HOUR,
-                    (seconds % HOUR) / MINUTE,
-                    seconds % MINUTE
-                ))
-                .size(8);
-                // Scrollable<scrollable::State> => Error
                 let scrollable_state: Scrollable<Message> =
                     Scrollable::new(&mut state.scrollable_state)
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .push(Text::new(state.display_value.to_string()));
-                //static b:button::State = *button;
-
+                
                 let start_irc_button_control: Element<_> = {
                     let (label, toggle, style) = if state.connecting_flag {
                         (
@@ -439,7 +376,7 @@ impl Application for App {
                 let content = Column::new()
                     .padding(10)
                     .spacing(10)
-                    .align_items(Align::Start) //.push(duration)
+                    .align_items(Align::Start)
                     .push(start_irc_button_control)
                     .push(Row::new().push(input_box).push(post_button))
                     .push(Row::new().align_items(Align::Center).push(scrollable_state));
