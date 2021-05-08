@@ -31,9 +31,8 @@ impl Message {
 pub fn app_loading_command(app: &mut App, message: Message) -> Command<Message> {
   match message {
     // saved_stateであることに注意すること。
-    Message::Loaded(Ok(saved_state)) => {
-      *app = App::Loaded(State::default());
-      // *app = App::Loaded(State::new_display_val(saved_state.display_value));
+    Message::Loaded(Ok(_saved_state)) => {
+      *app = App::Loaded(State::new_display_val(_saved_state.display_value));
     }
     Message::Loaded(Err(_)) => {
       *app = App::Loaded(State::default());
