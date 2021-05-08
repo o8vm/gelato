@@ -16,6 +16,7 @@ use std::{
  */
 use std::sync::{Arc};
 use futures::lock::Mutex;
+use futures::*;
 
 use crate::model::{message::*, subscribe_irc};
 use crate::style;
@@ -24,7 +25,7 @@ use crate::util;
 use anyhow::Result;
 
 // IRCクライアントをapp.rsで呼び出すなら必要。
-use irc::client::prelude::{Client, Config, Sender};
+use irc::client::{self, prelude::{Client, Config, Sender}};
 use irc::error::Error;
 
 // iced 2.0ぐらいから、iced::Resultが使えるようになった。
@@ -46,8 +47,8 @@ pub struct State {
     irc_button_state: button::State,
     post_button_state: button::State,
     scrollable_state: scrollable::State,
-    sender: Option<Arc<Mutex<irc::client::Sender>>>,
-    client_stream: Option<Arc<Mutex<irc::client::ClientStream>>>,
+    sender: Option<Arc<futures::lock::Mutex<irc::client::Sender>>>,
+    client_stream: Option<Arc<futures::lock::Mutex<irc::client::ClientStream>>>,
 }
 
 impl Default for State {
@@ -156,7 +157,7 @@ pub struct IrcClient {
 }
 
 impl IrcClient {
-  async fn get_sender() -> Result<IrcClient, failure::Error> {
+  async fn get_client() -> Result<IrcClient, failure::Error> {
       let config = Config::load("config.toml").unwrap();
       let mut client = Client::from_config(config).await?;
       client.identify()?;
@@ -204,32 +205,27 @@ impl Application for App {
             App::Loading => {
               match message {
                 Message::Loaded(Ok(saved_state)) => {
-                  // ここにprintln!を書くと実行されるが、
+                  // https://qiita.com/qnighy/items/05c38f73ef4b9e487ced
+                  // https://qiita.com/kbone/items/7f7847376fac78b0ebcb
+                  let mut current_state = State::default();
 
-                  let mut current_state = State::default();//State::new_display_val(saved_state.display_value);
-                  async {
-                    // ここが実行されない。
-                    // https://qiita.com/qnighy/items/05c38f73ef4b9e487ced
-                    /*match IrcClient::get_sender().await {
-                      Ok(IrcClient{ client_stream, sender}) => {
-                        println!("toutatushiteru");
-                        current_state.client_stream = Some(Arc::new(Mutex::new(client_stream)));
-                        current_state.sender = Some(Arc::new(Mutex::new(sender)));
-                      }
-                      Err(msg) => println!("failure: {}", msg)
-                    };
-                    let sender_original = current_state.sender.as_ref().unwrap();
-                    {
-                      let sender_clone = sender_original.clone();
-                      let mut sender = sender_clone.lock().unwrap();
-                      sender.send_privmsg("#test", "test value dayo").unwrap();
-                    }*/
-                    let config = Config::load("config.toml").unwrap();
-                    let mut client = Client::from_config(config).await.unwrap();
-                    client.identify().unwrap();
-                    let sender = client.sender();
-                    sender.send_privmsg("#test", "test value dayo").unwrap();
-                  };
+                  // futures::executor::block_on関数を使わないと、asyncの括弧の中が実行されない。
+                  futures::executor::block_on(async {
+                    let mut ircClient = IrcClient::get_client().await.expect("get_client()");
+                    let sender = ircClient.sender;
+                    let mut client_stream = ircClient.client_stream;
+                    // whileがある時実行される。
+                    // sender.send_privmsg("#test", "test value dayo").unwrap();
+                    current_state.client_stream = Some(Arc::new(futures::lock::Mutex::new(client_stream)));
+                    current_state.sender = Some(Arc::new(futures::lock::Mutex::new(sender)));
+
+                    /* 出力される
+                    while let Some(message) = client_stream.next().await.transpose().unwrap() {
+                      print!("{}", message);
+                      sender.send_privmsg("#test", "Hi!").unwrap();
+                    }
+                    */
+                  });
                   *self = App::Loaded(current_state);
                 }
                 Message::Loaded(Err(_)) => {
@@ -280,6 +276,7 @@ impl Application for App {
                         Message::Saved,
                     )*/
                     Command::none()
+
                   // IRCが開始されたら、selfをIRCConnectingに強制上書きする。
                   } else if ircflag {
                     let mut state_edit = state.clone();
@@ -316,7 +313,7 @@ impl Application for App {
                         state.connecting_flag = false;
                     }
                     Message::InputChanged(value) => {
-                        println!("Inputを{}に書き換えました", value);
+                        println!("Inputを{}に書き換えました 2", value);
                         state.input_value = value;
                     }
                     Message::PostMessage => {
@@ -325,21 +322,22 @@ impl Application for App {
                     _ => {}
                 }
 
-                if posted {
-                  let call = async move {
-                    match IrcClient::get_sender().await {
-                      Ok(IrcClient{ client_stream, sender}) => {
-                        println!("toutatushiteru");
-                        sender.send_privmsg("#test", "test value dayo").unwrap();
-                      }
-                      Err(msg) => println!("failure: {}", msg)
-                    }
-                  };
+                  if posted {
+                    println!("post 有効です");
+                    let mut sender_original = Arc::clone(&state.sender.as_ref().unwrap());
+                    let call = async move {
+                      println!("読んでいます");
+                      let mut sender = sender_original.lock().await;
+                      (*sender).send_privmsg("#test", "test input").unwrap();
+                    };
+
                   Command::perform(call, Message::None)
+
                 } else if irc_finished {
                     *self = App::IrcFinished(state.clone());
                     Command::perform(Message::change(), Message::IrcFinished)
-                } else {
+
+                  } else {
                     Command::none()
                 }
             }
@@ -367,8 +365,12 @@ impl Application for App {
             App::IrcConnecting(State {
                 post_flag,
                 input_value,
+                client_stream,
                 ..
-            }) => subscribe_irc::input(*post_flag, input_value, "").map(Message::IrcProgressed),
+            }) => {
+              let mut client_stream = client_stream.as_ref();
+              subscribe_irc::input(*post_flag, input_value, client_stream, "").map(Message::IrcProgressed)
+            },
             // input関数への受け渡しは適当にいろいろ試しているため、何も考えていない。
 
             // IRCと接続時以外は特に何もしない。
