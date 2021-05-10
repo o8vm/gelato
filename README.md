@@ -1,10 +1,11 @@
 # Gelato
-> A GUI IRC Client. Pop and Cool!
-Currently under development
+- A GUI IRC Client. Pop and Cool!
+![Gelato Logo](https://github.com/lilybrevec/gelato/blob/images/gelato-logo.png)
 
-## How To use
-- Copy "config.toml.template" to "config.toml"
-- Execute $cargo run$.
+## How 2 Use
+1. Copy "config.toml.template" to "config.toml"
+2. Execute $cargo run$
 
 ## Release
-- Ver. 0.0.2 is published as a simple IRC reader.
+- [Ver. 0.0.4](https://github.com/lilybrevec/gelato/releases/tag/0.0.4)
+- 
