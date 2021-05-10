@@ -1,6 +1,6 @@
 use crate::app::*;
 use crate::app::{IrcError, SavedState};
-use crate::model::subscribe_irc;
+use crate::subscribe_irc;
 use anyhow::Result;
 use iced::Command;
 

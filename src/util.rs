@@ -1,4 +1,4 @@
-use crate::model::message::Message;
+use crate::message::Message;
 use iced::{Container, Element, Length, Text};
 
 pub fn filter(s: &str) -> &str {

@@ -1,3 +1,4 @@
+use crate::{message::*, subscribe_irc, style, util};
 use iced::{
     button, scrollable, text_input, Align, Application, Button, Clipboard, Column, Command,
     Container, Element, Length, Row, Scrollable, Settings, Subscription, Text, TextInput,
@@ -12,11 +13,6 @@ use serde::{Deserialize, Serialize};
  https://github.com/usagi/rust-memory-container-cs
 */
 use std::sync::Arc;
-
-use crate::model::{message::*, subscribe_irc};
-use crate::style;
-use crate::util;
-
 // IRCクライアントをapp.rsで呼び出すなら必要。
 use irc::client::prelude::{Client, Config};
 
