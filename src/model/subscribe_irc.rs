@@ -1,7 +1,6 @@
 use futures::*;
 use iced_futures::futures;
-use irc::client::{self, prelude::*};
-use std::sync::{Arc};
+use std::sync::Arc;
 
 // Subscriptionで登録されている関数。引数が渡せそう。
 pub fn input<T: ToString>(
@@ -34,33 +33,35 @@ where
         self: Box<Self>,
         _input: futures::stream::BoxStream<'static, I>,
     ) -> futures::stream::BoxStream<'static, Self::Output> {
-
         Box::pin(futures::stream::unfold(
             SubscribeIrcState::Ready {
-                  client_stream: self.client_stream,
-                  some_input: self.some_input,
+                client_stream: self.client_stream,
+                some_input: self.some_input,
             },
             |state| async move {
                 match state {
                     // 最初に呼ばれるところ
-                    SubscribeIrcState::Ready { client_stream, .. } => 
-                    {
-                      let mut client_stream = client_stream;
-                      Some((
+                    SubscribeIrcState::Ready { client_stream, .. } => {
+                        let client_stream = client_stream;
+                        Some((
                             Progress::Started,
                             SubscribeIrcState::Incoming {
-                                client_stream: client_stream,
+                                client_stream,
                                 message_text: String::from(""),
-                            }
-                      ))
-                    },
+                            },
+                        ))
+                    }
                     // Streamが来ている時。回り続ける。
                     SubscribeIrcState::Incoming {
-                        mut client_stream,
+                        client_stream,
                         mut message_text,
                     } => {
                         let cloneclient = client_stream.clone();
-                        match (&mut cloneclient.unwrap().lock().await).next().await.transpose() {
+                        match (&mut cloneclient.unwrap().lock().await)
+                            .next()
+                            .await
+                            .transpose()
+                        {
                             Ok(Some(chunk)) => {
                                 message_text = chunk.to_string();
                                 Some((

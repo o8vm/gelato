@@ -3,7 +3,7 @@ use iced::{button, Background, Color, Vector};
 pub enum Button {
     Start,
     Stop,
-    Post
+    Post,
 }
 
 impl button::StyleSheet for Button {
@@ -16,17 +16,17 @@ impl button::StyleSheet for Button {
                 ..button::Style::default()
             },
             Button::Stop => button::Style {
-              background: Some(Background::Color(Color::from_rgb(0.8, 0.2, 0.6))),
-              border_radius: 1.0,
-              text_color: Color::WHITE,
-              ..button::Style::default()
-          },
+                background: Some(Background::Color(Color::from_rgb(0.8, 0.2, 0.6))),
+                border_radius: 1.0,
+                text_color: Color::WHITE,
+                ..button::Style::default()
+            },
             Button::Post => button::Style {
-              background: Some(Background::Color(Color::from_rgb(0.1, 0.2, 0.8))),
-              border_radius: 5.0,
-              text_color: Color::WHITE,
-              ..button::Style::default()
-            }
+                background: Some(Background::Color(Color::from_rgb(0.1, 0.2, 0.8))),
+                border_radius: 5.0,
+                text_color: Color::WHITE,
+                ..button::Style::default()
+            },
         }
     }
 
