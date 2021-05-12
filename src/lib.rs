@@ -9,4 +9,6 @@ pub mod style;
 pub mod util;
 pub mod message;
 pub mod subscribe_irc;
+pub mod content;
+pub use content::Content;
 pub use app::App;

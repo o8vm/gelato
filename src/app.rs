@@ -1,20 +1,12 @@
-use crate::{message::*, subscribe_irc, style, util};
+use crate::{content, message::*, style, subscribe_irc, util};
 use iced::{
-    button, scrollable, text_input, Align, Application, Button, Clipboard, Column, Command,
-    Container, Element, Length, Row, Scrollable, Settings, Subscription, Text, TextInput,
+    button, pane_grid, text_input, Align, Application, Button, Clipboard, Column, Command,
+    Container, Element, Length, PaneGrid, Row, Settings, Subscription, Text, TextInput,
 };
 use serde::{Deserialize, Serialize};
 
-// StructでClientを保持するのに必要
-/* by Tatsuya Kawanoさん
- 1. Clone 実装は必要だけど、 ClientStream の実体は1つにしたい。（複数の所有者で共有させたい）
- 2. 非同期ランタイムにもよるが、多くのランタイムはマルチスレッド形式なので、マルチスレッド対応が必要そう
- 3. ClientStream はミュータブル（可変）でないとならない。（なぜなら next() を呼ぶ際に &mut self が要求されるから）
- https://github.com/usagi/rust-memory-container-cs
-*/
-use std::sync::Arc;
-// IRCクライアントをapp.rsで呼び出すなら必要。
 use irc::client::prelude::{Client, Config};
+use std::sync::Arc;
 
 // iced 2.0ぐらいから、iced::Resultが使えるようになった。
 pub fn main() -> iced::Result {
@@ -33,13 +25,16 @@ pub struct State {
     current_channel: String,
     irc_button_state: button::State,
     post_button_state: button::State,
-    scrollable_state: scrollable::State,
     sender: Option<Arc<futures::lock::Mutex<irc::client::Sender>>>,
+    panes: pane_grid::State<content::Content>,
+    panes_created: usize,
+    focus: Option<pane_grid::Pane>,
     client_stream: Option<Arc<futures::lock::Mutex<irc::client::ClientStream>>>,
 }
 
 impl Default for State {
     fn default() -> Self {
+        let (panes, _) = pane_grid::State::new(content::Content::new(0));
         Self {
             input_state: text_input::State::new(),
             input_value: String::from(""),
@@ -47,11 +42,13 @@ impl Default for State {
             display_value: String::from(""),
             saving: true,
             dirty: true,
-            current_channel: String::from(""),
+            current_channel: String::from("#channel-name"),
             irc_button_state: button::State::new(),
             post_button_state: button::State::new(),
-            scrollable_state: scrollable::State::new(),
             sender: None,
+            panes: panes,
+            panes_created: 1,
+            focus: None,
             client_stream: None,
         }
     }
@@ -210,6 +207,63 @@ impl Application for App {
                     Message::InputChanged(value) => {
                         state.input_value = value;
                     }
+                    Message::Split(axis, pane) => {
+                        let result = state.panes.split(
+                            axis,
+                            &pane,
+                            content::Content::new(state.panes_created),
+                        );
+
+                        if let Some((pane, _)) = result {
+                            state.focus = Some(pane);
+                        }
+
+                        state.panes_created += 1;
+                    }
+                    Message::SplitFocused(axis) => {
+                        if let Some(pane) = state.focus {
+                            let result = state.panes.split(
+                                axis,
+                                &pane,
+                                content::Content::new(state.panes_created),
+                            );
+
+                            if let Some((pane, _)) = result {
+                                state.focus = Some(pane);
+                            }
+
+                            state.panes_created += 1;
+                        }
+                    }
+                    Message::FocusAdjacent(direction) => {
+                        if let Some(pane) = state.focus {
+                            if let Some(adjacent) = state.panes.adjacent(&pane, direction) {
+                                state.focus = Some(adjacent);
+                            }
+                        }
+                    }
+                    Message::Clicked(pane) => {
+                        state.focus = Some(pane);
+                    }
+                    Message::Resized(pane_grid::ResizeEvent { split, ratio }) => {
+                        state.panes.resize(&split, ratio);
+                    }
+                    Message::Dragged(pane_grid::DragEvent::Dropped { pane, target }) => {
+                        state.panes.swap(&pane, &target);
+                    }
+                    Message::Dragged(_) => {}
+                    Message::Close(pane) => {
+                        if let Some((_, sibling)) = state.panes.close(&pane) {
+                            state.focus = Some(sibling);
+                        }
+                    }
+                    Message::CloseFocused => {
+                        if let Some(pane) = state.focus {
+                            if let Some((_, sibling)) = state.panes.close(&pane) {
+                                state.focus = Some(sibling);
+                            }
+                        }
+                    }
                     _ => {}
                 }
 
@@ -333,12 +387,6 @@ impl Application for App {
         match self {
             App::Loading => util::loading_message(),
             App::Loaded(state) | App::IrcFinished(state) | App::IrcConnecting(state) => {
-                let scrollable_state: Scrollable<Message> =
-                    Scrollable::new(&mut state.scrollable_state)
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .push(Text::new(state.display_value.to_string()));
-
                 let start_irc_button_control: Element<_> = {
                     let (label, toggle, style) = if state.connecting_flag {
                         (
@@ -349,7 +397,7 @@ impl Application for App {
                     } else {
                         ("Start IRC", Message::IrcStart, style::Button::Start)
                     };
-                    Button::new(&mut state.irc_button_state, Text::new(label))
+                    Button::new(&mut state.irc_button_state, Text::new(label).size(25))
                         .style(style)
                         .on_press(toggle)
                         .into()
@@ -365,21 +413,51 @@ impl Application for App {
                 let input_box = TextInput::new(
                     &mut state.input_state,
                     "Input text...",
-                    & state.input_value,
+                    &state.input_value,
                     Message::InputChanged,
                 )
                 .padding(10)
                 .size(15)
                 .on_submit(Message::PostMessage);
 
-                let content = Column::new()
+                let content2 = Column::new()
                     .padding(10)
                     .spacing(10)
                     .align_items(Align::Start)
-                    .push(start_irc_button_control)
-                    .push(Row::new().push(input_box).push(post_button))
-                    .push(Row::new().align_items(Align::Center).push(scrollable_state));
-                Container::new(content)
+                    .push(
+                        Row::new()
+                            .push(input_box)
+                            .push(post_button)
+                            .push(start_irc_button_control),
+                    );
+
+                let focus = state.focus;
+                let total_panes = state.panes.len();
+                let channel_name = state.current_channel.to_string();
+                let text = state.display_value.clone();
+                let pane_grid = PaneGrid::new(&mut state.panes, |pane, content| {
+                    let is_focused = focus == Some(pane);
+
+                    let title = Row::with_children(vec![Text::new(channel_name.to_owned()).into()])
+                        .spacing(5);
+
+                    let title_bar = pane_grid::TitleBar::new(title)
+                        .padding(5)
+                        .style(style::TitleBar { is_focused });
+                    pane_grid::Content::new(content.view(pane, total_panes, text.to_owned()))
+                        .title_bar(title_bar)
+                        .style(style::Pane { is_focused })
+                })
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .spacing(10)
+                .on_click(Message::Clicked)
+                .on_drag(Message::Dragged)
+                .on_resize(10, Message::Resized);
+
+                let container = Column::new().spacing(1).push(pane_grid).push(content2);
+
+                Container::new(container)
                     .width(Length::FillPortion(2))
                     .height(Length::Fill)
                     .into()
