@@ -23,6 +23,7 @@ pub struct State {
     saving: bool,
     dirty: bool,
     current_channel: String,
+    config: Config,
     irc_button_state: button::State,
     post_button_state: button::State,
     sender: Option<Arc<futures::lock::Mutex<irc::client::Sender>>>,
@@ -43,6 +44,7 @@ impl Default for State {
             saving: true,
             dirty: true,
             current_channel: String::from("#channel-name"),
+            config: Config::default(),
             irc_button_state: button::State::new(),
             post_button_state: button::State::new(),
             sender: None,
@@ -117,8 +119,9 @@ pub struct IrcClient {
 }
 
 impl IrcClient {
-    async fn get_client() -> Result<IrcClient, failure::Error> {
+    async fn get_client(state: &mut State) -> Result<IrcClient, failure::Error> {
         let config = Config::load("config.toml").unwrap();
+        state.config = config.clone();
         let mut client = Client::from_config(config).await?;
         client.identify()?;
         Ok(IrcClient {
@@ -172,8 +175,9 @@ impl Application for App {
 
                         // futures::executor::block_on関数を使わないと、asyncの括弧の中が実行されない。
                         futures::executor::block_on(async {
-                            let irc_client_struct =
-                                IrcClient::get_client().await.expect("get_client()");
+                            let irc_client_struct = IrcClient::get_client(&mut current_state)
+                                .await
+                                .expect("get_client()");
                             current_state.client_stream = Some(Arc::new(
                                 futures::lock::Mutex::new(irc_client_struct.client_stream),
                             ));
@@ -359,16 +363,6 @@ impl Application for App {
     // selfはアプリケーションのenumのため、必要に応じてStateの中身を取り出す。
     fn subscription(&self) -> Subscription<Message> {
         match self {
-            // IRCと接続している時の非同期通信を設定。
-            // 具体的な実装は、model/subscribe_irc.rsで担当する。
-            // なんとかして、GUIからの入力値を渡そうとしている。
-            // GUIからの入力値をIRCサーバーに送信する方法は2種類考えられる。
-            // 1. app.rs内部で送信してしまう。
-            // 2. model/subscribe_irc.rsになんとかしてGUIからの入力値ならびに送信フラグを渡す。
-
-            // 1.を実現したいのであれば、何らかの方法でclientオブジェクトをapp.rsが保持しないといけないが、できていない。
-            // 2.を実現したのであれば、何らかの方法でsubscribe_ircにGUIからの入力値を渡さないといけない。
-            // subscribe_irc.rs内部で作成したクライアントからsendすること自体は可能であることを確認した。
             App::IrcConnecting(State { client_stream, .. }) => {
                 let client_stream = client_stream.as_ref();
                 subscribe_irc::input(client_stream, "").map(Message::IrcProgressed)
@@ -387,6 +381,7 @@ impl Application for App {
         match self {
             App::Loading => util::loading_message(),
             App::Loaded(state) | App::IrcFinished(state) | App::IrcConnecting(state) => {
+                // I'm going to delete START IRC BUTTON
                 let start_irc_button_control: Element<_> = {
                     let (label, toggle, style) = if state.connecting_flag {
                         (
@@ -402,6 +397,8 @@ impl Application for App {
                         .on_press(toggle)
                         .into()
                 };
+
+                // Below Contents
                 let post_button: Element<_> = {
                     let (label, toggle, style) =
                         ("Post", Message::PostMessage, style::Button::Post);
@@ -410,6 +407,7 @@ impl Application for App {
                         .on_press(toggle)
                         .into()
                 };
+
                 let input_box = TextInput::new(
                     &mut state.input_state,
                     "Input text...",
@@ -431,10 +429,12 @@ impl Application for App {
                             .push(start_irc_button_control),
                     );
 
+                // Panel Grid Components
                 let focus = state.focus;
                 let total_panes = state.panes.len();
                 let channel_name = state.current_channel.to_string();
                 let text = state.display_value.clone();
+
                 let pane_grid = PaneGrid::new(&mut state.panes, |pane, content| {
                     let is_focused = focus == Some(pane);
 
@@ -455,6 +455,7 @@ impl Application for App {
                 .on_drag(Message::Dragged)
                 .on_resize(10, Message::Resized);
 
+                // Container Components
                 let container = Column::new().spacing(1).push(pane_grid).push(content2);
 
                 Container::new(container)
