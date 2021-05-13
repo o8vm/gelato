@@ -1,13 +1,13 @@
 use crate::{message::*, style};
 use iced::{
-    button, pane_grid, scrollable, text_input, Align, Button, Clipboard, Column, Command,
-    Container, Element, HorizontalAlignment, Length, Row, Scrollable, Text, TextInput,
-    VerticalAlignment,
+    button, pane_grid, scrollable, Align, Button, Clipboard, Column, Command, Container, Element,
+    HorizontalAlignment, Length, Row, Scrollable, Text,
 };
 
 #[derive(Debug, Clone)]
 pub struct Content {
-    id: usize,
+    pub id: usize,
+    pub channel_name: String,
     scroll: scrollable::State,
     split_horizontally: button::State,
     split_vertically: button::State,
@@ -15,9 +15,10 @@ pub struct Content {
 }
 
 impl Content {
-    pub fn new(id: usize) -> Self {
+    pub fn new(id: usize, channel_list: &Vec<String>) -> Self {
         Content {
             id,
+            channel_name: channel_list[id % channel_list.len()].clone(),
             scroll: scrollable::State::new(),
             split_horizontally: button::State::new(),
             split_vertically: button::State::new(),
@@ -82,8 +83,9 @@ impl Content {
 
         let content = Scrollable::new(scroll)
             .width(Length::Fill)
+            .height(Length::Fill)
             .spacing(10)
-            .push(Text::new(text.to_string()).vertical_alignment(VerticalAlignment::Top));
+            .push(Text::new(text.to_string()));
 
         Container::new(
             Row::new()

@@ -6,7 +6,7 @@ use iced::{
 use serde::{Deserialize, Serialize};
 
 use irc::client::prelude::{Client, Config};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 // iced 2.0ぐらいから、iced::Resultが使えるようになった。
 pub fn main() -> iced::Result {
@@ -20,9 +20,11 @@ pub struct State {
     input_value: String,
     connecting_flag: bool,
     display_value: String,
+    channel_texts: HashMap<String, String>,
     saving: bool,
     dirty: bool,
     current_channel: String,
+    show_channels: Vec<String>,
     config: Config,
     irc_button_state: button::State,
     post_button_state: button::State,
@@ -35,15 +37,18 @@ pub struct State {
 
 impl Default for State {
     fn default() -> Self {
-        let (panes, _) = pane_grid::State::new(content::Content::new(0));
+        let show_channels = vec!["#test".to_string()];
+        let (panes, _) = pane_grid::State::new(content::Content::new(0, &show_channels));
         Self {
             input_state: text_input::State::new(),
             input_value: String::from(""),
             connecting_flag: false,
             display_value: String::from(""),
+            channel_texts: HashMap::new(),
             saving: true,
             dirty: true,
-            current_channel: String::from("#channel-name"),
+            current_channel: String::from("#test"),
+            show_channels: show_channels,
             config: Config::default(),
             irc_button_state: button::State::new(),
             post_button_state: button::State::new(),
@@ -215,7 +220,7 @@ impl Application for App {
                         let result = state.panes.split(
                             axis,
                             &pane,
-                            content::Content::new(state.panes_created),
+                            content::Content::new(state.panes_created, &state.show_channels),
                         );
 
                         if let Some((pane, _)) = result {
@@ -229,7 +234,7 @@ impl Application for App {
                             let result = state.panes.split(
                                 axis,
                                 &pane,
-                                content::Content::new(state.panes_created),
+                                content::Content::new(state.panes_created, &state.show_channels),
                             );
 
                             if let Some((pane, _)) = result {
@@ -302,6 +307,8 @@ impl Application for App {
             // IRC接続状態の時
             App::IrcConnecting(state) => {
                 state.connecting_flag = true;
+                // TODO : 本当はここは1:1ではないよね
+                state.show_channels = state.config.channels.clone();
                 let mut irc_finished = false;
                 let mut posted = false;
                 let mut input_word = String::from("");
@@ -311,8 +318,8 @@ impl Application for App {
                         // model/subscribe_irc.rsで実装されているProgressから結果のmessage_textが返却される。
                         subscribe_irc::Progress::Advanced(message_text) => {
                             // メッセージのフィルタリング
-                            let filtered_text: &str = util::filter(&message_text);
-                            state.display_value.push_str(filtered_text);
+                            util::filter(&message_text, &mut state.channel_texts);
+                            //state.display_value.push_str(filtered_text);
                         }
                         subscribe_irc::Progress::Finished => {
                             irc_finished = true;
@@ -334,16 +341,78 @@ impl Application for App {
                         input_word.push_str(&state.input_value.clone());
                         state.input_value = String::from("");
                     }
+                    Message::Split(axis, pane) => {
+                        let result = state.panes.split(
+                            axis,
+                            &pane,
+                            content::Content::new(state.panes_created, &state.show_channels),
+                        );
+
+                        if let Some((pane, _)) = result {
+                            state.focus = Some(pane);
+                        }
+
+                        state.panes_created += 1;
+                    }
+                    Message::SplitFocused(axis) => {
+                        if let Some(pane) = state.focus {
+                            let result = state.panes.split(
+                                axis,
+                                &pane,
+                                content::Content::new(state.panes_created, &state.show_channels),
+                            );
+
+                            if let Some((pane, _)) = result {
+                                state.focus = Some(pane);
+                            }
+
+                            state.panes_created += 1;
+                        }
+                    }
+                    Message::FocusAdjacent(direction) => {
+                        if let Some(pane) = state.focus {
+                            if let Some(adjacent) = state.panes.adjacent(&pane, direction) {
+                                state.focus = Some(adjacent);
+                            }
+                        }
+                    }
+                    Message::Clicked(pane) => {
+                        state.focus = Some(pane);
+                    }
+                    Message::Resized(pane_grid::ResizeEvent { split, ratio }) => {
+                        state.panes.resize(&split, ratio);
+                    }
+                    Message::Dragged(pane_grid::DragEvent::Dropped { pane, target }) => {
+                        state.panes.swap(&pane, &target);
+                    }
+                    Message::Dragged(_) => {}
+                    Message::Close(pane) => {
+                        if let Some((_, sibling)) = state.panes.close(&pane) {
+                            state.focus = Some(sibling);
+                        }
+                    }
+                    Message::CloseFocused => {
+                        if let Some(pane) = state.focus {
+                            if let Some((_, sibling)) = state.panes.close(&pane) {
+                                state.focus = Some(sibling);
+                            }
+                        }
+                    }
                     _ => {}
                 }
 
                 if posted && !input_word.is_empty() {
                     let sender_original = Arc::clone(&state.sender.as_ref().unwrap());
+                    let channel = state.current_channel.clone();
+                    let dummy = String::new();
+                    let input_text = state.channel_texts.get(&channel).unwrap_or(&dummy);
+                    let nickname = "username"; // [TODO]
+                    &state.channel_texts.insert(channel.clone(), input_text.clone() + nickname + " " + &input_word + "\n");
+
                     let call = async move {
                         let sender = sender_original.lock().await;
-                        (*sender).send_privmsg("#test", input_word).unwrap();
+                        (*sender).send_privmsg(channel, input_word).unwrap();
                     };
-
                     Command::perform(call, Message::None)
                 } else if irc_finished {
                     *self = App::IrcFinished(state.clone());
@@ -432,19 +501,19 @@ impl Application for App {
                 // Panel Grid Components
                 let focus = state.focus;
                 let total_panes = state.panes.len();
-                let channel_name = state.current_channel.to_string();
-                let text = state.display_value.clone();
-
+                let channel_texts = state.channel_texts.clone();
                 let pane_grid = PaneGrid::new(&mut state.panes, |pane, content| {
                     let is_focused = focus == Some(pane);
-
-                    let title = Row::with_children(vec![Text::new(channel_name.to_owned()).into()])
-                        .spacing(5);
+                    let dummy = String::new();
+                    let text = channel_texts.get(&content.channel_name).unwrap_or(&dummy);
+                    let title =
+                        Row::with_children(vec![Text::new(content.channel_name.clone()).into()])
+                            .spacing(5);
 
                     let title_bar = pane_grid::TitleBar::new(title)
                         .padding(5)
                         .style(style::TitleBar { is_focused });
-                    pane_grid::Content::new(content.view(pane, total_panes, text.to_owned()))
+                    pane_grid::Content::new(content.view(pane, total_panes, text.to_string()))
                         .title_bar(title_bar)
                         .style(style::Pane { is_focused })
                 })
