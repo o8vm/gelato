@@ -507,11 +507,11 @@ impl Application for App {
                     let dummy = String::new();
                     let text = channel_texts.get(&content.channel_name).unwrap_or(&dummy);
                     let title =
-                        Row::with_children(vec![Text::new(content.channel_name.clone()).into()])
-                            .spacing(5);
+                        Row::with_children(vec![Text::new(content.channel_name.clone()).size(18).into()])
+                            .spacing(3);
 
                     let title_bar = pane_grid::TitleBar::new(title)
-                        .padding(5)
+                        .padding(2)
                         .style(style::TitleBar { is_focused });
                     pane_grid::Content::new(content.view(pane, total_panes, text.to_string()))
                         .title_bar(title_bar)
@@ -519,7 +519,7 @@ impl Application for App {
                 })
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .spacing(10)
+                .spacing(5)
                 .on_click(Message::Clicked)
                 .on_drag(Message::Dragged)
                 .on_resize(10, Message::Resized);

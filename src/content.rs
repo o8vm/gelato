@@ -85,7 +85,7 @@ impl Content {
             .width(Length::Fill)
             .height(Length::Fill)
             .spacing(10)
-            .push(Text::new(text.to_string()));
+            .push(Text::new(text.to_string()).size(19));
 
         Container::new(
             Row::new()
