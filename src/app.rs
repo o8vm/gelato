@@ -406,7 +406,7 @@ impl Application for App {
                     let channel = state.current_channel.clone();
                     let dummy = String::new();
                     let input_text = state.channel_texts.get(&channel).unwrap_or(&dummy);
-                    let nickname = "username"; // [TODO]
+                    let nickname = state.config.username();
                     &state.channel_texts.insert(channel.clone(), input_text.clone() + nickname + " " + &input_word + "\n");
 
                     let call = async move {
