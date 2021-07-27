@@ -1,8 +1,8 @@
 use crate::app::*;
 use crate::app::{IrcError, SavedState};
-use crate::model::subscribe_irc;
+use crate::subscribe_irc;
 use anyhow::Result;
-use iced::Command;
+use iced::{pane_grid, Command};
 
 // 読み込み済み、保存済み、入力変化した イベントの状態
 // TODO: クライアントの作成時awaitの非同期処理が走る。
@@ -19,6 +19,14 @@ pub enum Message {
     IrcProgressed(subscribe_irc::Progress),
     IrcFinished(Result<(), IrcError>),
     PostMessage,
+    Split(pane_grid::Axis, pane_grid::Pane),
+    SplitFocused(pane_grid::Axis),
+    FocusAdjacent(pane_grid::Direction),
+    Clicked(pane_grid::Pane),
+    Dragged(pane_grid::DragEvent),
+    Resized(pane_grid::ResizeEvent),
+    Close(pane_grid::Pane),
+    CloseFocused,
     None(()),
 }
 
