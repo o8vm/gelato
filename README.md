@@ -12,7 +12,7 @@ $ brew install openssl
 $ cp config.toml.template config.toml
 $ emacs config.toml # edit infomation
 $ cargo run
-```sh
+```
 
 ### Ubuntu
 - Environment
@@ -46,3 +46,8 @@ $ cargo run
 
 ## Release
 - [Ver. 0.0.4](https://github.com/lilybrevec/gelato/releases/tag/0.0.4)
+
+## Look
+<div align="center">
+   <img src="https://github.com/lilybrevec/gelato/blob/images/gelato-screen.png" alt="gelato" title="Gelato Screen">
+</div>
