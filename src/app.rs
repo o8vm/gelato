@@ -8,11 +8,6 @@ use serde::{Deserialize, Serialize};
 use irc::client::prelude::{Client, Config};
 use std::{collections::HashMap, sync::Arc};
 
-// iced 2.0ぐらいから、iced::Resultが使えるようになった。
-pub fn main() -> iced::Result {
-    App::run(Settings::default())
-}
-
 // アプリケーションの状態管理
 #[derive(Debug, Clone)]
 pub struct State {
